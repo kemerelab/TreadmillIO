@@ -28,7 +28,8 @@ BigMonitor.setWidth(117)
 
 
 win = visual.Window([3840,1080], monitor=BigMonitor,
-                    color=LIGHT_GREY, colorSpace=CS,
+                    color=GREY, colorSpace=CS,
+                    allowGUI=False,
                     screen=1, fullScr=True,
                     units='pix')
 
@@ -40,6 +41,8 @@ HalfWidthOfStimulus = MonitorWidth/2 - EdgeOfStimulus
 StimulusWidth = HalfWidthOfStimulus * 2
 
 img = np.tile(np.array([[-1, 1], [1, -1]]), (10,10)) # Image bitmap
+
+# ADD CENTER STIMULUS!!!
 
 stimulus_left = visual.ImageStim(win=win, image=img,
                      colorSpace=CS,
