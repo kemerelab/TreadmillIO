@@ -1,10 +1,11 @@
-from psychopy import visual, core, event
+from psychopy import visual, core, event, monitors
 import numpy as np
 
 import zmq
 import random
 import sys
 import time
+import math
 
 
 CS = 'rgb'  # ColorSpace
@@ -20,25 +21,39 @@ BLACK = [-1, -1, -1]
 # GREY = [128, 128, 128]
 # BLACK = [0, 0, 0]
 
-win = visual.Window([1600, 1600], monitor='testMonitor',
+
+BigMonitor = monitors.Monitor('CurvedSamsung46', distance=20)
+BigMonitor.setSizePix([3840, 1080])
+BigMonitor.setWidth(117)
+
+
+win = visual.Window([3840,1080], monitor=BigMonitor,
                     color=LIGHT_GREY, colorSpace=CS,
+                    screen=1, fullScr=True,
                     units='pix')
 
-img = np.tile(np.array([[-1, 1], [1, -1]]), (int(20/2), int(20/2))) # Image bitmap
+MonitorWidth = 117.0 # cm
+MouseDistance = 20.0 # cm
+CenterEmpty = 60.0 # degrees
+EdgeOfStimulus = math.tan(CenterEmpty/2 / 180 * math.pi) * MouseDistance
+HalfWidthOfStimulus = MonitorWidth/2 - EdgeOfStimulus
+StimulusWidth = HalfWidthOfStimulus * 2
+
+img = np.tile(np.array([[-1, 1], [1, -1]]), (10,10)) # Image bitmap
 
 stimulus_left = visual.ImageStim(win=win, image=img,
                      colorSpace=CS,
                      color=WHITE,
-                     size=(400, 400),
-                     pos=(-600, 0),
-                     units='pix')
+                     size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
+                     pos=(-MonitorWidth/2, 0), # monitor width / 2 = left edge
+                     units='cm')
 
 stimulus_right = visual.ImageStim(win=win, image=img,
                      colorSpace=CS,
                      color=WHITE,
-                     size=(400, 400),
-                     pos=(600,0),
-                     units='pix')
+                     size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
+                     pos=(MonitorWidth/2, 0), # monitor width / 2 = left edge
+                     units='cm')
 
 
 
@@ -68,9 +83,9 @@ while True:
     if state != 'GRAY':
         if (t < tend):
             if state =='LEFT':
-                animateStimulus(t - tstart, stimulus_left, rate=40.0)
+                animateStimulus(t - tstart, stimulus_left, rate=8.0)
             elif state == 'RIGHT':
-                animateStimulus(t - tstart, stimulus_right, rate=40.0)
+                animateStimulus(t - tstart, stimulus_right, rate=8.0)
         else:
             state = 'GRAY'
 
