@@ -23,9 +23,6 @@ import numpy as np
 
 ### Maybe should add argcomplete for this program?
 
-# GPIO IDs on IO board
-GPIO_IDs = [16, 17, 18, 19, 24, 25, 26, 27, -1]
-
 # Command-line arguments: computer settings
 # Command-line arguments: computer settings
 parser = argparse.ArgumentParser(description='Run simple linear track experiment.')
@@ -51,19 +48,6 @@ log_filename = os.path.join(args.output_dir, log_filename)
 with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
-print('Normalizing stimuli:')
-StimuliList = Config['AuditoryStimuli']['StimuliList']
-for stimulus_name, stimulus in StimuliList.items(): 
-    print(' - ',stimulus_name)
-    for key, config_item in Config['AuditoryStimuli']['Defaults'].items():
-        if key not in stimulus:
-            stimulus[key] = config_item
-        elif isinstance(config_item, dict):
-            for subkey, sub_config_item in config_item.items():
-                if subkey not in stimulus[key]:
-                    stimulus[key][subkey] = sub_config_item
-
-
 #----------------------- parameters --------------
 TrackTransform = None
 
@@ -79,6 +63,20 @@ from RenderTrack import RenderTrack
 visualization = RenderTrack(track_length=VirtualTrackLength)
 
 from SoundStimulus import SoundStimulus
+
+# Configure Sound Stimuli default options
+print('Normalizing stimuli:')
+StimuliList = Config['AuditoryStimuli']['StimuliList']
+for stimulus_name, stimulus in StimuliList.items(): 
+    print(' - ',stimulus_name)
+    for key, config_item in Config['AuditoryStimuli']['Defaults'].items():
+        if key not in stimulus:
+            stimulus[key] = config_item
+        elif isinstance(config_item, dict):
+            for subkey, sub_config_item in config_item.items():
+                if subkey not in stimulus[key]:
+                    stimulus[key][subkey] = sub_config_item
+
 
 BackgroundSounds = {}
 Beeps = {}
@@ -138,7 +136,6 @@ for reward_name, reward in Config['RewardZones']['RewardZoneList'].items():
             if reward['RewardSound'] not in Beeps:
                 raise ValueError('Reward sound not in defined Beeps list')
 
-
         visualization.add_zone_position(reward['RewardZoneStart'], reward['RewardZoneEnd'], 
                         fillcolor=None, edgecolor=reward['Color'], hatch='....', width=1.33, alpha=1.0)
 
@@ -147,7 +144,6 @@ for reward_name, reward in Config['RewardZones']['RewardZoneList'].items():
                     reward['DispensePin'], reward['PumpRunTime'], reward['RewardSound'],
                     reward['LickTimeout'],
                     reward['MaxSequentialRewards'], (reward['ResetZoneStart'], reward['ResetZoneEnd'])) )
-
         elif (reward['Type'] == 'Operant'):
             if reward['LickPin'] not in Interface.GPIOs:
                 raise ValueError('Lick pin not in defined GPIO list')
@@ -198,22 +194,21 @@ with open(log_filename, 'w', newline='') as log_file:
             TrackPosition = 0 
 
         if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print('Heartbeat {} - {} - 0x{:08b}'.format(MasterTime, TrackPosition, GPIO))
+            print('Heartbeat {} - {} - 0x{:08b}'.format(MasterTime, TrackPosition, GPIO[0]))
+
+        # Stimulus
+        for _, sound in SoundStimuliList.items():
+            sound.pos_update_gain(TrackPosition)
 
 
-            # Stimulus
-            for _, sound in SoundStimuliList.items():
-                sound.pos_update_gain(TrackPosition)
-
-        if (MasterTime % 1000) == 0:
-            Interface.raise_output('LickTrigger')
-
-        if (MasterTime % 1000) == 50:
-            Interface.lower_output('LickTrigger')
-
+        # Visual Stimulus State machine
+        # 1.) Intertrial interval
+        # 2.) Display stimulus
+        # 3.) Reward (classical conditioning)
 
         # Reward
-        if RewardPumpActive:
+        # NOTE - Currently only a single reward is implemented.
+        if RewardPumpActive: # This should be a loop over all pulse-type GPIOs
             if MasterTime > RewardPumpEndTime:
                 RewardPumpActive = False
                 Interface.lower_output(RewardPin)
