@@ -7,3 +7,20 @@ Preferences:
   HeartBeat: 250 # ms
 
 
+GPIO:
+  Input1:
+    Number: 1
+    Type: 'Input'
+    Power: True
+  Input2:
+    Number: 2
+    Type: 'Input_Pulldown'
+    Power: True
+  Input3:
+    Number: 3
+    Type: 'Input_Pulldown'
+    Power: True
+  Input4:
+    Number: 4
+    Type: 'Input_Pulldown'
+    Power: True

@@ -9,6 +9,9 @@
 #     pump logic controlled by PumpOn and PumpOffTime, so each time the pump is triggered, it must reset after 100ms regardless of animal's pos
 #     peak_volume is constant number regardless of different tone frequencies
 #     max_reward_times controls the max number of reward it can get within one single lap
+#
+#  See SoundStimulus.py - need to run `jackd -R -P50 -v -d alsa -p64 -n2 -P hw:1,0 -r48000` (use aplay -l/-L to figure out which hw device)
+#
 
 import time
 import datetime
@@ -53,6 +56,7 @@ if Config['Maze']['Type'] == 'VR':
     d = Config['Maze']['WheelDiameter'] #cm diameter of the physical wheel; 150cm
 count = 0
 
+
 #%%
 from RenderTrack import RenderTrack
 
@@ -61,7 +65,6 @@ visualization = RenderTrack(track_length=VirtualTrackLength)
 from SoundStimulus import SoundStimulus
 
 # Configure Sound Stimuli default options
-
 print('Normalizing stimuli:')
 StimuliList = Config['AuditoryStimuli']['StimuliList']
 for stimulus_name, stimulus in StimuliList.items(): 
@@ -74,6 +77,7 @@ for stimulus_name, stimulus in StimuliList.items():
                 if subkey not in stimulus[key]:
                     stimulus[key][subkey] = sub_config_item
 
+
 BackgroundSounds = {}
 Beeps = {}
 SoundStimuliList = {}
@@ -81,8 +85,8 @@ SoundStimuliList = {}
 for stimulus_name, stimulus in StimuliList.items():
 
     filename = stimulus['Filename']
-    if Config['Preferences']['SoundResourcesDirectory']:
-        filename = os.path.join(Config['Preferences']['SoundResourcesDirectory'], filename)
+    if Config['Preferences']['AudioFileDirectory']:
+        filename = os.path.join(Config['Preferences']['AudioFileDirectory'], filename)
     print('Loading: {}'.format(filename))
 
     if stimulus['Type'] == 'Background':
@@ -107,6 +111,14 @@ for stimulus_name, stimulus in StimuliList.items():
     time.sleep(1.0)
 
 
+from SerialInterface import SerialInterface
+
+Interface = SerialInterface(SerialPort=args.serial_port)
+
+if 'GPIO' in Config:
+    for gpio_label, gpio_config in Config['GPIO'].items():
+        Interface.add_gpio(gpio_label, gpio_config)
+
 from RewardZone import ClassicalRewardZone, OperantRewardZone
 
 RewardsList = []
@@ -120,7 +132,7 @@ for reward_name, reward in Config['RewardZones']['RewardZoneList'].items():
                 raise ValueError('Reward sound not in defined Beeps list')
 
         visualization.add_zone_position(reward['RewardZoneStart'], reward['RewardZoneEnd'], 
-                        fillcolor=None, edgecolor=stimulus['Color'], hatch='....', width=1.33, alpha=1.0)
+                        fillcolor=None, edgecolor=reward['Color'], hatch='....', width=1.33, alpha=1.0)
 
         if (reward['Type'] == 'Classical'):
             RewardsList.append(ClassicalRewardZone((reward['RewardZoneStart'], reward['RewardZoneEnd']),
@@ -142,20 +154,12 @@ for reward_name, reward in Config['RewardZones']['RewardZoneList'].items():
 
 
 
-from SerialInterfaceSimulator import SerialInterface
 
-Interface = SerialInterface(SerialPort=args.serial_port)
-
-if 'GPIO' in Config:
-    for gpio_label, gpio_config in Config['GPIO'].items():
-        Interface.add_gpio(gpio_label, gpio_config)
-
-
+Interface.connect()
 
 ## initiate encoder value ##
 #FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
 FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-
 
 initialUnwrappedencoder = UnwrappedEncoder 
 print("initial unwrapped encoder value : ", UnwrappedEncoder)
@@ -212,9 +216,8 @@ with open(log_filename, 'w', newline='') as log_file:
                         Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
                     print('Reward!')
 
-
-        # Visualization
-        if (MasterTime % 100) == 0:
-            visualization.move_mouse_position(TrackPosition)
+        # Visualization # NOTE THAT THIS SLOWS THINGS DOWN BY ABOUT 150 ms (why does it only affect sound???)
+        # if (MasterTime % 100) == 0:
+            # visualization.move_mouse_position(TrackPosition)
 
             

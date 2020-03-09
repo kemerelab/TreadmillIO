@@ -41,76 +41,35 @@ with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
 
-import threading
-import socketserver
-
-class ThreadedUDPRequestHandler(socketserver.BaseRequestHandler):
-    def handle(self):
-        global MasterTime
-        data = self.request[0].strip()
-        socket = self.request[1]
-        socket.sendto("MasterTime: {}".format(MasterTime).encode(), self.client_address)
-        cur_thread = threading.current_thread()
-        response = bytes("{}: {}".format(cur_thread.name, data), 'ascii')
-        print("{}: {} wrote:".format(cur_thread.name, self.client_address[0]))
-        print(data)
-
-class ThreadedUDPServer(socketserver.ThreadingMixIn, socketserver.UDPServer):
-    pass
-
-def client(ip, port, message):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.connect((ip, port))
-        sock.sendall(bytes(message, 'ascii'))
-        response = str(sock.recv(1024), 'ascii')
-        print("Received: {}".format(response))
-
-HOST, PORT = "localhost", 9999
-
 from SerialInterface import SerialInterface
 
+Interface = SerialInterface(SerialPort=args.serial_port)
 
-with ThreadedUDPServer((HOST, PORT), ThreadedUDPRequestHandler) as server:
-    server_thread = threading.Thread(target=server.serve_forever)
-    # Exit the server thread when the main thread terminates
-    server_thread.daemon = True
-    server_thread.start()
-    print("Server loop running in thread:", server_thread.name)
+if 'GPIO' in Config:
+    for gpio_label, gpio_config in Config['GPIO'].items():
+        Interface.add_gpio(gpio_label, gpio_config)
 
-
-    Interface = SerialInterface(SerialPort=args.serial_port)
-    ## initiate encoder value ##
-    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-    initialUnwrappedencoder = UnwrappedEncoder 
-    print("initial unwrapped encoder value : ", UnwrappedEncoder)
-
-    with open(log_filename, 'w', newline='') as log_file:
-        writer = csv.writer(log_file)
-
-        Interface.configure_pin(1, 'OUTPUT', 'AUX')
-        Interface.configure_pin(2, 'OUTPUT', 'AUX')
-        Interface.configure_pin(3, 'OUTPUT', 'AUX')
-        Interface.configure_pin(4, 'OUTPUT', 'AUX')
-        Interface.write_pin(1, 1, 'AUX')
-        Interface.write_pin(2, 1, 'AUX')
-        Interface.write_pin(3, 1, 'AUX')
-        Interface.write_pin(4, 1, 'AUX')
-
-        Interface.configure_pin(5, 'OUTPUT', 'DIO')
-        Interface.configure_pin(6, 'OUTPUT', 'DIO')
-        Interface.configure_pin(7, 'OUTPUT', 'DIO')
-        Interface.configure_pin(8, 'OUTPUT', 'DIO')
+Interface.connect()
 
 
-        while(True):
-            ## every 2 ms happens:
-            last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
-            FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+## initiate encoder value ##
+FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+initialUnwrappedencoder = UnwrappedEncoder 
+print("initial unwrapped encoder value : ", UnwrappedEncoder)
 
-            writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts])
-
-            if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-                print('Heartbeat {} - {} - 0x{:016b}'.format(MasterTime, UnwrappedEncoder, GPIO))
+with open(log_filename, 'w', newline='') as log_file:
+    writer = csv.writer(log_file)
 
 
-            
+    while(True):
+        ## every 2 ms happens:
+        last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
+        FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+
+        writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts])
+
+        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
+            print('Heartbeat {} - {} - 0x{:016b}'.format(MasterTime, UnwrappedEncoder, GPIO))
+
+
+        
