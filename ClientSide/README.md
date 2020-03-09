@@ -18,7 +18,7 @@ Info: # "Info" configuration options can be overridden by command line options
 
 Preferences:
   HeartBeat: 250 # The interval at which a heart-beat info message is printed to screen (in ms) 
-  SoundResourcesDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds' # Directory in which file is stored
+  AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds' # Directory in which file is stored
 
 
 
