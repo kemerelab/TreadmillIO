@@ -23,6 +23,7 @@ import numpy as np
 
 ### Maybe should add argcomplete for this program?
 
+
 # Command-line arguments: computer settings
 # Command-line arguments: computer settings
 parser = argparse.ArgumentParser(description='Run simple linear track experiment.')
@@ -43,28 +44,15 @@ now = datetime.datetime.now()
 log_filename = '{}{}.txt'.format('Log', now.strftime("%Y-%m-%d %H%M"))
 log_filename = os.path.join(args.output_dir, log_filename)
 
+cmd_log_filename = '{}{}.txt'.format('CommandLog', now.strftime("%Y-%m-%d %H%M"))
+cmd_log_filename = os.path.join(args.output_dir, cmd_log_filename)
+
+
 
 # YAML parameters: task settings
 with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
-#----------------------- parameters --------------
-TrackTransform = None
-
-if Config['Maze']['Type'] == 'VR':
-    VirtualTrackLength = Config['Maze']['Length'] #cm
-    d = Config['Maze']['WheelDiameter'] #cm diameter of the physical wheel; 150cm
-count = 0
-
-
-#%%
-from RenderTrack import RenderTrack
-
-visualization = RenderTrack(track_length=VirtualTrackLength)
-
-from SoundStimulus import SoundStimulus
-
-# Configure Sound Stimuli default options
 print('Normalizing stimuli:')
 StimuliList = Config['AuditoryStimuli']['StimuliList']
 for stimulus_name, stimulus in StimuliList.items(): 
@@ -78,35 +66,35 @@ for stimulus_name, stimulus in StimuliList.items():
                     stimulus[key][subkey] = sub_config_item
 
 
+#----------------------- parameters --------------
+TrackTransform = None
+
+if Config['Maze']['Type'] != 'StateMachine':
+    raise(NotImplementedError("Don't use this script for a VR"))
+
+
+from SoundStimulus import SoundStimulus
+
 BackgroundSounds = {}
 Beeps = {}
-SoundStimuliList = {}
 
 for stimulus_name, stimulus in StimuliList.items():
-
     filename = stimulus['Filename']
     if Config['Preferences']['AudioFileDirectory']:
         filename = os.path.join(Config['Preferences']['AudioFileDirectory'], filename)
     print('Loading: {}'.format(filename))
 
     if stimulus['Type'] == 'Background':
-        BackgroundSounds[stimulus_name] = SoundStimulus(filename=filename)
-        visualization.add_zone_position(0, VirtualTrackLength, fillcolor=stimulus['Color'], width=0.5, alpha=0.75)
-        BackgroundSounds[stimulus_name].change_gain(stimulus['BaselineGain'])
+        pass
+        #BackgroundSounds[stimulus_name] = SoundStimulus(filename=filename)
+        #BackgroundSounds[stimulus_name].change_gain(stimulus['BaselineGain'])
     elif stimulus['Type'] == 'Beep':
-        Beeps[stimulus_name] = SoundStimulus(filename=filename)
-        Beeps[stimulus_name].change_gain(stimulus['BaselineGain'])
-        Beeps[stimulus_name].change_gain(-90.0) # beep for a very short moment
+        Beeps[stimulus_name] = None
+        #Beeps[stimulus_name] = SoundStimulus(filename=filename)
+        #Beeps[stimulus_name].change_gain(stimulus['BaselineGain'])
+        #Beeps[stimulus_name].change_gain(-90.0) # beep for a very short moment
     elif stimulus['Type'] == 'Localized':
-        SoundStimuliList[stimulus_name] = SoundStimulus(filename=filename)
-        visualization.add_zone_position(stimulus['CenterPosition'] - stimulus['Modulation']['Width']/2, 
-                               stimulus['CenterPosition'] + stimulus['Modulation']['Width']/2, 
-                               fillcolor=stimulus['Color'])
-
-        SoundStimuliList[stimulus_name].initLocalizedSound(center=stimulus['CenterPosition'], 
-                        width=stimulus['Modulation']['Width'], trackLength=VirtualTrackLength, 
-                        maxGain=stimulus['BaselineGain'], minGain=stimulus['Modulation']['CutoffGain'])
-        SoundStimuliList[stimulus_name].change_gain(-90.0) # start off turned off
+        raise(NotImplementedError("Localized auditory stimuli not supported for StateMachine control script."))
 
     time.sleep(1.0)
 
@@ -120,45 +108,54 @@ if 'GPIO' in Config:
         Interface.add_gpio(gpio_label, gpio_config)
 
 
-# Create a GPIO pin to use to trigger the lick sensor
-Interface.add_gpio('LickTrigger',{'Number':1,'Type':'Output', 'Mirror':True})
+from TaskStateMachine import DelayState, RewardState, VisualizationState
 
+StateMachineDict = {}
+FirstState = None
+for state_name, state in Config['StateMachine'].items():
+    if 'FirstState' in state and state['FirstState']:
+        FirstState = state_name
 
-from RewardZone import ClassicalRewardZone, OperantRewardZone
-
-RewardsList = []
-for reward_name, reward in Config['RewardZones']['RewardZoneList'].items():
-    if (reward['Type'] == 'Classical') | (reward['Type'] == 'Operant'):
-        if reward['DispensePin'] not in Interface.GPIOs:
+    if (state['Type'] == 'Delay'):
+        StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
+    elif (state['Type'] == 'Reward'):
+        if state['Params']['DispensePin'] not in Interface.GPIOs:
             raise ValueError('Dispense pin not in defined GPIO list')
-
-        if reward['RewardSound'] != 'None':
-            if reward['RewardSound'] not in Beeps:
+        if state['Params']['RewardSound'] != 'None':
+            if state['Params']['RewardSound'] not in Beeps:
                 raise ValueError('Reward sound not in defined Beeps list')
-
-        visualization.add_zone_position(reward['RewardZoneStart'], reward['RewardZoneEnd'], 
-                        fillcolor=None, edgecolor=reward['Color'], hatch='....', width=1.33, alpha=1.0)
-
-        if (reward['Type'] == 'Classical'):
-            RewardsList.append(ClassicalRewardZone((reward['RewardZoneStart'], reward['RewardZoneEnd']),
-                    reward['DispensePin'], reward['PumpRunTime'], reward['RewardSound'],
-                    reward['LickTimeout'],
-                    reward['MaxSequentialRewards'], (reward['ResetZoneStart'], reward['ResetZoneEnd'])) )
-        elif (reward['Type'] == 'Operant'):
-            if reward['LickPin'] not in Interface.GPIOs:
-                raise ValueError('Lick pin not in defined GPIO list')
-            lickPinNumber = Interface.GPIOs[reward['LickPin']]['Number'] # We are going to bit mask raw GPIO for this
-
-            RewardsList.append(OperantRewardZone((reward['RewardZoneStart'], reward['RewardZoneEnd']),
-                    lickPinNumber, reward['DispensePin'], reward['PumpRunTime'], reward['RewardSound'],
-                    reward['LickTimeout'],
-                    reward['MaxSequentialRewards'], 
-                    (reward['ResetZoneStart'], reward['ResetZoneEnd'])) )            
+        StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
+    elif (state['Type'] == 'Visualization'):
+        StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
     else:
-        raise(NotImplementedError("Reward types other than classical are not yet implemented"))
+        raise(NotImplementedError("State machine elements other than " 
+                "Delay, Reward, or Visualization not yet implemented"))
+
+if FirstState is None:
+    FirstState = list(StateMachineDict.keys())[0]
+    print('First state in state machine not defined. '
+          'Picking first state in list: {}'.format(FirstState))
+else:
+    print('First state is {}'.format(FirstState))
 
 
+import zmq
 
+log_file = open(log_filename, 'w', newline='')
+cmd_log_file = open(cmd_log_filename, 'w', newline='')
+
+#with open(log_filename, 'w', newline='') as log_file, \
+#     open(cmd_log_filename, 'w', newline='') as cmd_log_file:
+
+context = zmq.Context()
+socket = context.socket(zmq.PAIR)
+if 'VisualCommsPort' in Config['Preferences']:
+    port = str(Config['Preferences']['VisualCommsPort'])
+else:
+    port = "5556"
+    socket.connect("tcp://localhost:%s" % port)
+
+print("tcp://localhost:%s" % port)
 
 Interface.connect()
 
@@ -172,63 +169,77 @@ print("initial unwrapped encoder value : ", UnwrappedEncoder)
 RewardPumpEndTime = 0
 RewardPumpActive = False
 
-with open(log_filename, 'w', newline='') as log_file:
-    writer = csv.writer(log_file)
+StateMachineWaiting = False
+StateMachineWaitEndTime = 0
 
-    while(True):
-        ## every 2 ms happens:
-        last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
-        #FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
-        FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+CurrentState = StateMachineDict[FirstState]
+print('Current state type: {}'.format(CurrentState.Type))
+if (CurrentState.Type == 'Delay'):
+    StateMachineWaitEndTime = MasterTime + CurrentState.getDelay()
+    StateMachineWaiting = True
+    print('Expected end time: {}'.format(StateMachineWaitEndTime))
 
 
-        writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts])
 
-        if Config['Maze']['Type'] == 'VR':
-            UnwrappedPosition = (UnwrappedEncoder - initialUnwrappedencoder) / Config['Maze']['EncoderGain'] *d *np.pi 
-            TrackPosition = UnwrappedPosition % VirtualTrackLength
+writer = csv.writer(log_file)
+cmd_writer = csv.writer(cmd_log_file)
+
+while(True):
+    ## every 2 ms happens:
+    last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
+    #FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
+    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+
+
+    writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts])
+
+    TrackPosition = 0 
+
+    if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
+        print('Heartbeat {} - {} - 0x{:08b}'.format(MasterTime, TrackPosition, GPIO))
+
+
+    # StateMachine
+
+    if StateMachineWaiting:
+        if MasterTime > StateMachineWaitEndTime:
+            CurrentState = StateMachineDict[CurrentState.NextState]
+            StateMachineWaiting = False
         else:
-            # GPIO to Position transformation
-            # Use this for controlling behavior on a physical track where position is not tracked by a rotary encoder
-            # TrackPosition = TrackTransform.convert(GPIO[0])
-            TrackPosition = 0 
+            pass
+    else:
+        if CurrentState.Type == 'Delay':
+            delay = CurrentState.getDelay()
+            StateMachineWaitEndTime = MasterTime + delay
+            StateMachineWaiting = True
+            cmd_writer.writerow(['Delay', MasterTime, delay])
+        elif CurrentState.Type == 'Reward':
+            RewardPin, PulseLength, RewardSound = CurrentState.rewardValues()
+            RewardPumpActive = True
+            RewardPumpEndTime = MasterTime + PulseLength
+            Interface.raise_output(RewardPin)
+            #if RewardSound:
+            #    Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
+            print('Reward!')
+            cmd_writer.writerow(['Reward', MasterTime])
+            CurrentState = StateMachineDict[CurrentState.NextState]
+        elif (CurrentState.Type == 'Visualization'):
+            command = CurrentState.getVisualizationCommand()
+            cmd_writer.writerow([command, MasterTime])
+            print(command)
+            socket.send_string(command)
+            CurrentState = StateMachineDict[CurrentState.NextState]
 
-        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print('Heartbeat {} - {} - 0x{:08b}'.format(MasterTime, TrackPosition, GPIO[0]))
 
-        # Stimulus
-        for _, sound in SoundStimuliList.items():
-            sound.pos_update_gain(TrackPosition)
+    # Reward
+    if RewardPumpActive:
+        if MasterTime > RewardPumpEndTime:
+            RewardPumpActive = False
+            Interface.lower_output(RewardPin)
+            print('Rewad off')
+            #if RewardSound:
+            #    Beeps[RewardSound].change_gain(-90.0)
 
 
-        # Visual Stimulus State machine
-        # 1.) Intertrial interval
-        # 2.) Display stimulus
-        # 3.) Reward (classical conditioning)
 
-        # Reward
-        # NOTE - Currently only a single reward is implemented.
-        if RewardPumpActive: # This should be a loop over all pulse-type GPIOs
-            if MasterTime > RewardPumpEndTime:
-                RewardPumpActive = False
-                Interface.lower_output(RewardPin)
-                if RewardSound:
-                    Beeps[RewardSound].change_gain(-90.0)
 
-        if not RewardPumpActive: # Only check for reward if we're not rewarding
-            for reward in RewardsList:
-                reward_values = reward.pos_reward(TrackPosition, GPIO, MasterTime)
-                if (reward_values):
-                    RewardPin, PulseLength, RewardSound = reward_values
-                    RewardPumpActive = True
-                    RewardPumpEndTime = MasterTime + PulseLength
-                    Interface.raise_output(RewardPin)
-                    if RewardSound:
-                        Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
-                    print('Reward!')
-
-        # Visualization # NOTE THAT THIS SLOWS THINGS DOWN BY ABOUT 150 ms (why does it only affect sound???)
-        # if (MasterTime % 100) == 0:
-        #     visualization.move_mouse_position(TrackPosition)
-
-            
