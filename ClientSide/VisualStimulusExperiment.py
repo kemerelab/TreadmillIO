@@ -19,7 +19,7 @@ import os
 import argparse
 import yaml
 import csv
-import numpy as np
+import zmq
 
 ### Maybe should add argcomplete for this program?
 
@@ -53,6 +53,10 @@ cmd_log_filename = os.path.join(args.output_dir, cmd_log_filename)
 with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
+EnableSound = False
+if 'EnableSound' in Config['Preferences']:
+    EnableSound = Config['Preferences']['EnableSound']
+
 print('Normalizing stimuli:')
 StimuliList = Config['AuditoryStimuli']['StimuliList']
 for stimulus_name, stimulus in StimuliList.items(): 
@@ -67,36 +71,34 @@ for stimulus_name, stimulus in StimuliList.items():
 
 
 #----------------------- parameters --------------
-TrackTransform = None
 
 if Config['Maze']['Type'] != 'StateMachine':
     raise(NotImplementedError("Don't use this script for a VR"))
 
 
-from SoundStimulus import SoundStimulus
+if EnableSound:
+    from SoundStimulus import SoundStimulus
 
-BackgroundSounds = {}
-Beeps = {}
+    BackgroundSounds = {}
+    Beeps = {}
 
-for stimulus_name, stimulus in StimuliList.items():
-    filename = stimulus['Filename']
-    if Config['Preferences']['AudioFileDirectory']:
-        filename = os.path.join(Config['Preferences']['AudioFileDirectory'], filename)
-    print('Loading: {}'.format(filename))
+    for stimulus_name, stimulus in StimuliList.items():
+        filename = stimulus['Filename']
+        if Config['Preferences']['AudioFileDirectory']:
+            filename = os.path.join(Config['Preferences']['AudioFileDirectory'], filename)
+        print('Loading: {}'.format(filename))
 
-    if stimulus['Type'] == 'Background':
-        pass
-        #BackgroundSounds[stimulus_name] = SoundStimulus(filename=filename)
-        #BackgroundSounds[stimulus_name].change_gain(stimulus['BaselineGain'])
-    elif stimulus['Type'] == 'Beep':
-        Beeps[stimulus_name] = None
-        #Beeps[stimulus_name] = SoundStimulus(filename=filename)
-        #Beeps[stimulus_name].change_gain(stimulus['BaselineGain'])
-        #Beeps[stimulus_name].change_gain(-90.0) # beep for a very short moment
-    elif stimulus['Type'] == 'Localized':
-        raise(NotImplementedError("Localized auditory stimuli not supported for StateMachine control script."))
+        if stimulus['Type'] == 'Background':
+            BackgroundSounds[stimulus_name] = SoundStimulus(filename=filename)
+            BackgroundSounds[stimulus_name].change_gain(stimulus['BaselineGain'])
+        elif stimulus['Type'] == 'Beep':
+            Beeps[stimulus_name] = SoundStimulus(filename=filename)
+            Beeps[stimulus_name].change_gain(stimulus['BaselineGain'])
+            Beeps[stimulus_name].change_gain(-90.0) # beep for a very short moment
+        elif stimulus['Type'] == 'Localized':
+            raise(NotImplementedError("Localized auditory stimuli not supported for StateMachine control script."))
 
-    time.sleep(1.0)
+        time.sleep(1.0)
 
 
 from SerialInterface import SerialInterface
@@ -118,15 +120,18 @@ for state_name, state in Config['StateMachine'].items():
 
     if (state['Type'] == 'Delay'):
         StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
+
     elif (state['Type'] == 'Reward'):
         if state['Params']['DispensePin'] not in Interface.GPIOs:
             raise ValueError('Dispense pin not in defined GPIO list')
-        if state['Params']['RewardSound'] != 'None':
+        if EnableSound and state['Params']['RewardSound'] != 'None':
             if state['Params']['RewardSound'] not in Beeps:
                 raise ValueError('Reward sound not in defined Beeps list')
         StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
+
     elif (state['Type'] == 'Visualization'):
         StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
+
     else:
         raise(NotImplementedError("State machine elements other than " 
                 "Delay, Reward, or Visualization not yet implemented"))
@@ -139,8 +144,7 @@ else:
     print('First state is {}'.format(FirstState))
 
 
-import zmq
-
+# ----- Communications to visual stimulus server
 context = zmq.Context()
 socket = context.socket(zmq.PAIR)
 if 'VisualCommsPort' in Config['Preferences']:
@@ -149,21 +153,16 @@ else:
     port = "5556"
 
 
-#log_file = open(log_filename, 'w', newline='')
-#cmd_log_file = open(cmd_log_filename, 'w', newline='')
-
 with open(log_filename, 'w', newline='') as log_file, \
      open(cmd_log_filename, 'w', newline='') as cmd_log_file, \
      context.socket(zmq.PAIR) as socket:
 
     socket.connect("tcp://localhost:%s" % port)
 
-    Interface.connect()
+    writer = csv.writer(log_file)
+    cmd_writer = csv.writer(cmd_log_file)
 
-    ## initiate encoder value ##
-    #FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
-    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-
+    # ----------------- Initialization
     RewardPumpEndTime = 0
     RewardPumpActive = False
 
@@ -171,31 +170,29 @@ with open(log_filename, 'w', newline='') as log_file, \
     StateMachineWaitEndTime = 0
 
     CurrentState = StateMachineDict[FirstState]
+
+    Interface.connect()
+
+    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+
     if (CurrentState.Type == 'Delay'):
         StateMachineWaitEndTime = MasterTime + CurrentState.getDelay()
         StateMachineWaiting = True
 
-    writer = csv.writer(log_file)
-    cmd_writer = csv.writer(cmd_log_file)
-
     while(True):
         ## every 2 ms happens:
-        last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
-        #FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
         FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+        last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
+                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
-
-        writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts])
-
-        TrackPosition = 0 
+        writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
         if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print('Heartbeat {} - {} - 0x{:08b}'.format(MasterTime, TrackPosition, GPIO))
+            print('Heartbeat {} - 0x{:012b}'.format(MasterTime, GPIO))
 
+        # -------------------- StateMachine -------------------- 
 
-        # StateMachine
-
-        if StateMachineWaiting:
+        if StateMachineWaiting: # Currently in a `Delay` or other state in which we shouldn't transition yet
             if MasterTime > StateMachineWaitEndTime:
                 CurrentState = StateMachineDict[CurrentState.NextState]
                 StateMachineWaiting = False
@@ -212,8 +209,8 @@ with open(log_filename, 'w', newline='') as log_file, \
                 RewardPumpActive = True
                 RewardPumpEndTime = MasterTime + PulseLength
                 Interface.raise_output(RewardPin)
-                #if RewardSound:
-                #    Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
+                if EnableSound and RewardSound:
+                    Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
                 print('Reward!')
                 cmd_writer.writerow(['Reward', MasterTime])
                 CurrentState = StateMachineDict[CurrentState.NextState]
@@ -230,9 +227,8 @@ with open(log_filename, 'w', newline='') as log_file, \
             if MasterTime > RewardPumpEndTime:
                 RewardPumpActive = False
                 Interface.lower_output(RewardPin)
-                print('Rewad off')
-                #if RewardSound:
-                #    Beeps[RewardSound].change_gain(-90.0)
+                if EnableSound and RewardSound:
+                    Beeps[RewardSound].change_gain(-90.0)
 
 
 
