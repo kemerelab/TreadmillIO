@@ -27,7 +27,7 @@ import numpy as np
 # Command-line arguments: computer settings
 # Command-line arguments: computer settings
 parser = argparse.ArgumentParser(description='Run simple linear track experiment.')
-parser.add_argument('-P', '--serial-port', default='/dev/ttyS0',
+parser.add_argument('-P', '--serial-port', default='/dev/ttyACM0',
                    help='TTY device for USB-serial interface (e.g., /dev/ttyUSB0 or COM10)')
 parser.add_argument('--param-file', default='defaults.yaml',  
                     help='YAML file containing task parameters')
@@ -141,104 +141,98 @@ else:
 
 import zmq
 
-log_file = open(log_filename, 'w', newline='')
-cmd_log_file = open(cmd_log_filename, 'w', newline='')
-
-#with open(log_filename, 'w', newline='') as log_file, \
-#     open(cmd_log_filename, 'w', newline='') as cmd_log_file:
-
 context = zmq.Context()
 socket = context.socket(zmq.PAIR)
 if 'VisualCommsPort' in Config['Preferences']:
     port = str(Config['Preferences']['VisualCommsPort'])
 else:
     port = "5556"
+
+
+#log_file = open(log_filename, 'w', newline='')
+#cmd_log_file = open(cmd_log_filename, 'w', newline='')
+
+with open(log_filename, 'w', newline='') as log_file, \
+     open(cmd_log_filename, 'w', newline='') as cmd_log_file, \
+     context.socket(zmq.PAIR) as socket:
+
     socket.connect("tcp://localhost:%s" % port)
 
-print("tcp://localhost:%s" % port)
+    Interface.connect()
 
-Interface.connect()
-
-## initiate encoder value ##
-#FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
-FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-
-initialUnwrappedencoder = UnwrappedEncoder 
-print("initial unwrapped encoder value : ", UnwrappedEncoder)
-
-RewardPumpEndTime = 0
-RewardPumpActive = False
-
-StateMachineWaiting = False
-StateMachineWaitEndTime = 0
-
-CurrentState = StateMachineDict[FirstState]
-print('Current state type: {}'.format(CurrentState.Type))
-if (CurrentState.Type == 'Delay'):
-    StateMachineWaitEndTime = MasterTime + CurrentState.getDelay()
-    StateMachineWaiting = True
-    print('Expected end time: {}'.format(StateMachineWaitEndTime))
-
-
-
-writer = csv.writer(log_file)
-cmd_writer = csv.writer(cmd_log_file)
-
-while(True):
-    ## every 2 ms happens:
-    last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
+    ## initiate encoder value ##
     #FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
 
+    RewardPumpEndTime = 0
+    RewardPumpActive = False
 
-    writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts])
+    StateMachineWaiting = False
+    StateMachineWaitEndTime = 0
 
-    TrackPosition = 0 
+    CurrentState = StateMachineDict[FirstState]
+    if (CurrentState.Type == 'Delay'):
+        StateMachineWaitEndTime = MasterTime + CurrentState.getDelay()
+        StateMachineWaiting = True
 
-    if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-        print('Heartbeat {} - {} - 0x{:08b}'.format(MasterTime, TrackPosition, GPIO))
+    writer = csv.writer(log_file)
+    cmd_writer = csv.writer(cmd_log_file)
+
+    while(True):
+        ## every 2 ms happens:
+        last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
+        #FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO = Interface.read_data()
+        FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
 
 
-    # StateMachine
+        writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts])
 
-    if StateMachineWaiting:
-        if MasterTime > StateMachineWaitEndTime:
-            CurrentState = StateMachineDict[CurrentState.NextState]
-            StateMachineWaiting = False
+        TrackPosition = 0 
+
+        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
+            print('Heartbeat {} - {} - 0x{:08b}'.format(MasterTime, TrackPosition, GPIO))
+
+
+        # StateMachine
+
+        if StateMachineWaiting:
+            if MasterTime > StateMachineWaitEndTime:
+                CurrentState = StateMachineDict[CurrentState.NextState]
+                StateMachineWaiting = False
+            else:
+                pass
         else:
-            pass
-    else:
-        if CurrentState.Type == 'Delay':
-            delay = CurrentState.getDelay()
-            StateMachineWaitEndTime = MasterTime + delay
-            StateMachineWaiting = True
-            cmd_writer.writerow(['Delay', MasterTime, delay])
-        elif CurrentState.Type == 'Reward':
-            RewardPin, PulseLength, RewardSound = CurrentState.rewardValues()
-            RewardPumpActive = True
-            RewardPumpEndTime = MasterTime + PulseLength
-            Interface.raise_output(RewardPin)
-            #if RewardSound:
-            #    Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
-            print('Reward!')
-            cmd_writer.writerow(['Reward', MasterTime])
-            CurrentState = StateMachineDict[CurrentState.NextState]
-        elif (CurrentState.Type == 'Visualization'):
-            command = CurrentState.getVisualizationCommand()
-            cmd_writer.writerow([command, MasterTime])
-            print(command)
-            socket.send_string(command)
-            CurrentState = StateMachineDict[CurrentState.NextState]
+            if CurrentState.Type == 'Delay':
+                delay = CurrentState.getDelay()
+                StateMachineWaitEndTime = MasterTime + delay
+                StateMachineWaiting = True
+                cmd_writer.writerow(['Delay', MasterTime, delay])
+            elif CurrentState.Type == 'Reward':
+                RewardPin, PulseLength, RewardSound = CurrentState.rewardValues()
+                RewardPumpActive = True
+                RewardPumpEndTime = MasterTime + PulseLength
+                Interface.raise_output(RewardPin)
+                #if RewardSound:
+                #    Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
+                print('Reward!')
+                cmd_writer.writerow(['Reward', MasterTime])
+                CurrentState = StateMachineDict[CurrentState.NextState]
+            elif (CurrentState.Type == 'Visualization'):
+                command = CurrentState.getVisualizationCommand()
+                cmd_writer.writerow([command, MasterTime])
+                print(command)
+                socket.send_string(command)
+                CurrentState = StateMachineDict[CurrentState.NextState]
 
 
-    # Reward
-    if RewardPumpActive:
-        if MasterTime > RewardPumpEndTime:
-            RewardPumpActive = False
-            Interface.lower_output(RewardPin)
-            print('Rewad off')
-            #if RewardSound:
-            #    Beeps[RewardSound].change_gain(-90.0)
+        # Reward
+        if RewardPumpActive:
+            if MasterTime > RewardPumpEndTime:
+                RewardPumpActive = False
+                Interface.lower_output(RewardPin)
+                print('Rewad off')
+                #if RewardSound:
+                #    Beeps[RewardSound].change_gain(-90.0)
 
 
 
