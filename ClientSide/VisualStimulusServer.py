@@ -23,13 +23,14 @@ BLACK = [-1, -1, -1]
 
 
 BigMonitor = monitors.Monitor('CurvedSamsung46', distance=20)
-BigMonitor.setSizePix([3840, 1080])
+BigMonitor.setSizePix([960, 270])
+# BigMonitor.setSizePix([3840, 1080])
 BigMonitor.setWidth(117)
 
 
-win = visual.Window([3840,1080], monitor=BigMonitor,
+win = visual.Window([960,270], monitor=BigMonitor,
                     color=GREY, colorSpace=CS,
-                    allowGUI=False,
+                    allowGUI=True,
                     screen=1, fullScr=True,
                     units='pix')
 
