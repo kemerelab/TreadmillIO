@@ -13,17 +13,32 @@ Preferences:
 
 
 GPIO: # A list of GPIO pins used in the task
+  Camera: # This is an arbitrary label used later to configure Reward
+    Number: 1 # This is the pin number from the board
+    Type: 'Input' 
+    Power: False
   Lick: # This is an arbitrary label used later to configure Reward
-    Number: 3 # This is the pin number from the board
-    Type: 'Input_Pulldown' # Pin type is either 'Inout' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
+    Number: 2 # This is the pin number from the board
+    Type: 'Input' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
                            # (where the pull-down/pull-up resistors are enabled).
     Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
                 # enabling the power channel of the audio jack.
+  ScreenLeft: # This is an arbitrary label used later to configure Reward
+    Number: 3 # This is the pin number from the board
+    Type: 'Input' 
+    Power: True
+
+  ScreenRight: # This is an arbitrary label used later to configure Reward
+    Number: 4 # This is the pin number from the board
+    Type: 'Input' 
+    Power: True
   Reward:
-    Number: 4
+    Number: 5
     Type: 'Output'
-    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+    Mirror: False # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
                  # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+
+
 
 Maze:
   Type: 'StateMachine' # VR or physical
