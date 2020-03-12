@@ -18,7 +18,7 @@ class SerialInterface():
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
             bytesize=serial.EIGHTBITS,
-            timeout=0.2
+            timeout=0.1
         )
 
         # Synchronize immediately after opening port!
@@ -118,6 +118,7 @@ class SerialInterface():
         writeString += value.to_bytes(1, byteorder='big',signed=True)
         # print(value, writeString) # debuggging
         self.serial.write(writeString)
+        self.serial.flush()
 
 
     def raise_output(self, GPIO):
