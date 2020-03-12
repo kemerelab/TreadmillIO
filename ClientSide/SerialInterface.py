@@ -107,16 +107,19 @@ class SerialInterface():
         configureString += self.PinModes[direction.upper()].to_bytes(1, byteorder='big',signed=True)
         self.serial.write(configureString)
 
-    def write_pin(self, pin, value, pinType='DIO'):
+    def write_pin(self, pin, value, pinType='DIO', mirror=False):
         writeString = b'\xA9' # Magic character which indicates start of command
-        if pinType == 'DIO':
-            writeString += b'D'
-        elif pinType == 'AUX':
-            writeString += b'A'
+        if not mirror:
+            if pinType == 'DIO':
+                writeString += b'D'
+            elif pinType == 'AUX':
+                writeString += b'A'
+        else:
+            writeString += b'M'
 
         writeString += pin.to_bytes(1, byteorder='big',signed=True)
         writeString += value.to_bytes(1, byteorder='big',signed=True)
-        # print(value, writeString) # debuggging
+        print(value, writeString) # debuggging
         self.serial.write(writeString)
         self.serial.flush()
 
@@ -128,9 +131,7 @@ class SerialInterface():
             self.GPIO_state = data
             self.send_byte(data)
         elif (self.version == 2):
-            self.write_pin(pin, 1)
-            if self.GPIOs[GPIO]['Mirror']:
-                self.write_pin(pin, 1, 'AUX')
+            self.write_pin(pin, 1, pinType='DIO', mirror=self.GPIOs[GPIO]['Mirror'])
 
 
     def lower_output(self, GPIO):
@@ -140,9 +141,7 @@ class SerialInterface():
             self.GPIO_state = data
             self.send_byte(data)
         elif (self.version == 2):
-            self.write_pin(pin, 0)
-            if self.GPIOs[GPIO]['Mirror']:
-                self.write_pin(pin, 0, 'AUX')
+            self.write_pin(pin, 1, pinType='DIO', mirror=self.GPIOs[GPIO]['Mirror'])
 
 
     def configure_io(self, pin, direction, power=False, mirror=False):

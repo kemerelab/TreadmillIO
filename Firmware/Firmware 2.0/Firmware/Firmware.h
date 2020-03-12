@@ -48,6 +48,7 @@
 #define ConfigDIOFlag   'C'
 #define ConfigAUXFlag   'X'
 #define WriteDIOFlag    'D'
+#define WriteDIOMirrorFlag    'M'
 #define WriteAUXFlag    'A'
 
 
