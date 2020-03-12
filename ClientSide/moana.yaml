@@ -5,7 +5,7 @@ Info: # "Info" configuration options can be overridden by command line options
   TaskType: Moana Classical Conditioning
 
 Preferences:
-  HeartBeat: 250 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds' # Directory in which file is stored
   RandSeed: 345
   VisualCommsPort: 5556
@@ -35,7 +35,7 @@ GPIO: # A list of GPIO pins used in the task
   Reward:
     Number: 5
     Type: 'Output'
-    Mirror: False # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
                  # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
 
 
