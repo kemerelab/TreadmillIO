@@ -18,7 +18,8 @@ class SerialInterface():
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
             bytesize=serial.EIGHTBITS,
-            timeout=0.1
+            timeout=0.1,
+            write_timeout=0
         )
 
         # Synchronize immediately after opening port!
@@ -119,9 +120,10 @@ class SerialInterface():
 
         writeString += pin.to_bytes(1, byteorder='big',signed=True)
         writeString += value.to_bytes(1, byteorder='big',signed=True)
-        print(value, writeString) # debuggging
+        # print(value, writeString) # debuggging
         self.serial.write(writeString)
-        self.serial.flush()
+        #self.serial.flush()
+        #self.serial.flushOutput()
 
 
     def raise_output(self, GPIO):
@@ -141,7 +143,7 @@ class SerialInterface():
             self.GPIO_state = data
             self.send_byte(data)
         elif (self.version == 2):
-            self.write_pin(pin, 1, pinType='DIO', mirror=self.GPIOs[GPIO]['Mirror'])
+            self.write_pin(pin, 0, pinType='DIO', mirror=self.GPIOs[GPIO]['Mirror'])
 
 
     def configure_io(self, pin, direction, power=False, mirror=False):
