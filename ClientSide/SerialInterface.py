@@ -9,7 +9,7 @@ class SerialInterface():
 
         self.GPIOs = {}
 
-        self.GPIO_state = b'\x00'
+        self.GPIO_state = int(0) # b'\x00'
 
     def connect(self):
         print('Connecting to serial/USB interface {} and synchronizing.'.format(self.serialPort))
@@ -57,6 +57,7 @@ class SerialInterface():
 
         x = self.serial.read(index) # read the last little bit of the bad block, and we are in sync!
 
+        # Make sure we understand the current state - Configure all pins to be input
         for pin in range(12):
             self.configure_pin(pin+1, 'INPUT')
             self.configure_pin(pin+1, 'INPUT', 'AUX')
@@ -124,6 +125,8 @@ class SerialInterface():
         self.serial.write(writeString)
         #self.serial.flush()
         #self.serial.flushOutput()
+        
+        self.GPIO_state 
 
 
     def raise_output(self, GPIO):
