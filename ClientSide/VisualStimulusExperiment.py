@@ -110,7 +110,7 @@ if 'GPIO' in Config:
         Interface.add_gpio(gpio_label, gpio_config)
 
 
-from TaskStateMachine import DelayState, RewardState, VisualizationState
+from TaskStateMachine import DelayState, RewardState, VisualizationState, SetGPIOState
 
 StateMachineDict = {}
 FirstState = None
@@ -120,6 +120,11 @@ for state_name, state in Config['StateMachine'].items():
 
     if (state['Type'] == 'Delay'):
         StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
+
+    elif (state['Type'] == 'SetGPIO'):
+        if state['Params']['Pin'] not in Interface.GPIOs:
+            raise ValueError('GPIO pin not in defined GPIO list')
+        StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'])
 
     elif (state['Type'] == 'Reward'):
         if state['Params']['DispensePin'] not in Interface.GPIOs:
@@ -134,7 +139,7 @@ for state_name, state in Config['StateMachine'].items():
 
     else:
         raise(NotImplementedError("State machine elements other than " 
-                "Delay, Reward, or Visualization not yet implemented"))
+                "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
 
 if FirstState is None:
     FirstState = list(StateMachineDict.keys())[0]
@@ -204,6 +209,16 @@ with open(log_filename, 'w', newline='') as log_file, \
                 StateMachineWaitEndTime = MasterTime + delay
                 StateMachineWaiting = True
                 cmd_writer.writerow(['Delay', MasterTime, delay])
+
+            elif CurrentState.Type == 'SetGPIO':
+                Pin, Value = CurrentState.getPinValue()
+                if Value:
+                    Interface.raise_output(Pin)
+                else:
+                    Interface.lower_output(Pin)
+                cmd_writer.writerow(['SetGPIO', MasterTime, Pin, Value])
+                CurrentState = StateMachineDict[CurrentState.NextState]
+
             elif CurrentState.Type == 'Reward':
                 RewardPin, PulseLength, RewardSound = CurrentState.rewardValues()
                 RewardPumpActive = True
@@ -214,6 +229,7 @@ with open(log_filename, 'w', newline='') as log_file, \
                 print('Reward!')
                 cmd_writer.writerow(['Reward', MasterTime])
                 CurrentState = StateMachineDict[CurrentState.NextState]
+                
             elif (CurrentState.Type == 'Visualization'):
                 command = CurrentState.getVisualizationCommand()
                 cmd_writer.writerow([command, MasterTime])

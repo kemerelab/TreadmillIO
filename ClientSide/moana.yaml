@@ -15,22 +15,22 @@ Preferences:
 GPIO: # A list of GPIO pins used in the task
   Camera: # This is an arbitrary label used later to configure Reward
     Number: 1 # This is the pin number from the board
-    Type: 'Input' 
+    Type: 'Input_Pulldown' 
     Power: False
   Lick: # This is an arbitrary label used later to configure Reward
     Number: 2 # This is the pin number from the board
-    Type: 'Input' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
+    Type: 'Input_Pulldown' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
                            # (where the pull-down/pull-up resistors are enabled).
     Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
                 # enabling the power channel of the audio jack.
   ScreenLeft: # This is an arbitrary label used later to configure Reward
     Number: 3 # This is the pin number from the board
-    Type: 'Input' 
+    Type: 'Input_Pulldown' 
     Power: True
 
   ScreenRight: # This is an arbitrary label used later to configure Reward
     Number: 4 # This is the pin number from the board
-    Type: 'Input' 
+    Type: 'Input_Pulldown' 
     Power: True
   Reward:
     Number: 5
@@ -38,6 +38,33 @@ GPIO: # A list of GPIO pins used in the task
     Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
                  # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
 
+
+  RLPin:
+    Number: 6
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+
+
+  Disable7:
+    Number: 7
+    Type: 'Input_Disable'
+  Disable8:
+    Number: 8
+    Type: 'Input_Disable'
+  Disable9:
+    Number: 9
+    Type: 'Input_Disable'
+  Disable10:
+    Number: 10
+    Type: 'Input_Disable'
+  Disable11:
+    Number: 11
+    Type: 'Input_Disable'
+  Disable12:
+    Number: 12
+    Type: 'Input_Disable'
+                 
 
 
 Maze:
@@ -56,7 +83,13 @@ StateMachine:
     Type: 'Delay'
     Params:
       Duration: 'Fixed'
-      Value: 3000
+      Value: 1000
+    NextState: Lower
+  Lower:
+    Type: 'SetGPIO'
+    Params:
+      Pin: 'RLPin'
+      Value: 0
     NextState: 'StimulusPresentation'
   StimulusPresentation:
     Type: 'Visualization'
@@ -73,17 +106,19 @@ StateMachine:
   StimulusPresentationDelay:
     Type: 'Delay'
     Params:
-      Duration: 'Exponential'
-      Rate: 1000
-      Min: 2000
-      Max: 4000
+      Duration: 'Fixed'
+      Value: 2000
+      #Duration: 'Exponential'
+      #Rate: 1000
+      #Min: 2000
+      #Max: 4000
     NextState: 'Reward'
   Reward:
       Type: 'Reward'
       NextState: 'BlankScreen'
       Params:
         DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
-        PumpRunTime: 250 # How long to run the reward pump for. Note that this is also the duration
+        PumpRunTime: 100 # How long to run the reward pump for. Note that this is also the duration
                           # of time that any associated Beep will be played.
         RewardSound: 'RewardSound' # The name of the auditory stimulus (of type "Beep") which should be played 
                               # at the time of reward. This plays for the same duration of the pulse which

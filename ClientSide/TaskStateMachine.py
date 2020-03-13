@@ -78,3 +78,14 @@ class RewardState(TaskState):
     def rewardValues(self):
         return self.RewardPin, self.PulseLength, self.RewardSound
 
+class SetGPIOState(TaskState):
+    def __init__(self, currentStateLabel, nextStateLabel, Params):
+        TaskState.__init__(self, currentStateLabel, nextStateLabel)
+        self.Type = 'SetGPIO'
+
+        self.Pin = Params['Pin']
+        self.Value = Params['Value']
+
+    def getPinValue(self):
+        return self.Pin, self.Value
+
