@@ -9,7 +9,13 @@ class SerialInterface():
 
         self.GPIOs = {}
 
-        self.GPIO_state = int(0) # b'\x00'
+        self.latency = 0
+
+        if self.version == 1:
+            self.GPIO_state = b'\x00'
+        else:
+            self.GPIO_state = int(0) # b'\x00'
+            self.OutputPinMask = int(0)
 
     def connect(self):
         print('Connecting to serial/USB interface {} and synchronizing.'.format(self.serialPort))
@@ -81,8 +87,16 @@ class SerialInterface():
         elif (self.version==2):
             StartChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO  = struct.unpack('<cBLhlHHx', x)
             assert(StartChar == self.startChar)
+            self.GPIO_state = (self.GPIO_state & self.OutputPinMask) + (GPIO & ~self.OutputPinMask)
+            if (GPIO != self.GPIO_state):
+                self.latency = self.latency + 1
+                #print(f'Difference between expected and actual GPIO {self.GPIO_state:#0b} {GPIO:#0b}')
             return StartChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO
 
+    def check_latency():
+        latency = self.latency
+        self.latency = 0
+        return latency
 
     def send_byte(self,data):
         if data is not None:
@@ -123,10 +137,11 @@ class SerialInterface():
         writeString += value.to_bytes(1, byteorder='big',signed=True)
         # print(value, writeString) # debuggging
         self.serial.write(writeString)
-        #self.serial.flush()
-        #self.serial.flushOutput()
         
-        self.GPIO_state 
+        if (value > 0) : 
+            self.GPIO_state |= (0x01 <<pin)
+        else:
+            self.GPIO_state &= ~(0x01 <<pin)
 
 
     def raise_output(self, GPIO):
@@ -166,7 +181,7 @@ class SerialInterface():
             name: The name which will be associated with the pin for subsequent IO
             pin_config: A dictionary with potential parameters which might be set
                   Required keys: `Number` - the DIO number
-                                 `Type` - `Input` or `Output`
+                                 `Type` - `Input` or `Output` or `Input_Pullup` or `Input_Pulldown`
                   Optional keys: `Power` - (Boolean) Should the AUX power associated
                                            with the pin be turned on.
                                  `Mirror` - (Boolean) Should the AUX pin associated
@@ -185,4 +200,7 @@ class SerialInterface():
             self.GPIOs[name]['Mirror'] = pin_config['Mirror']
         else:
             self.GPIOs[name]['Mirror'] = False
+
+        if pin_config['Type'] == 'Output':
+            self.OutputPinMask |= 0x01 << pin_config['Number']
 
