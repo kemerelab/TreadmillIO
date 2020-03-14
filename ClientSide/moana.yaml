@@ -83,13 +83,7 @@ StateMachine:
     Type: 'Delay'
     Params:
       Duration: 'Fixed'
-      Value: 1000
-    NextState: Lower
-  Lower:
-    Type: 'SetGPIO'
-    Params:
-      Pin: 'RLPin'
-      Value: 0
+      Value: 4
     NextState: 'StimulusPresentation'
   StimulusPresentation:
     Type: 'Visualization'
@@ -107,18 +101,36 @@ StateMachine:
     Type: 'Delay'
     Params:
       Duration: 'Fixed'
-      Value: 2000
+      Value: 4
       #Duration: 'Exponential'
       #Rate: 1000
       #Min: 2000
       #Max: 4000
     NextState: 'Reward'
+  Raise:
+    Type: 'SetGPIO'
+    Params:
+      Pin: 'Reward'
+      Value: 1
+    NextState: 'RewardDelay'
+  RewardDelay:
+    Type: 'Delay'
+    Params:
+      Duration: 'Fixed'
+      Value: 2
+    NextState: 'Lower'
+  Lower:
+    Type: 'SetGPIO'
+    Params:
+      Pin: 'Reward'
+      Value: 0
+    NextState: 'BlankScreen'
   Reward:
       Type: 'Reward'
       NextState: 'BlankScreen'
       Params:
         DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
-        PumpRunTime: 100 # How long to run the reward pump for. Note that this is also the duration
+        PumpRunTime: 2 # How long to run the reward pump for. Note that this is also the duration
                           # of time that any associated Beep will be played.
         RewardSound: 'RewardSound' # The name of the auditory stimulus (of type "Beep") which should be played 
                               # at the time of reward. This plays for the same duration of the pulse which
