@@ -23,14 +23,14 @@ BLACK = [-1, -1, -1]
 
 
 BigMonitor = monitors.Monitor('CurvedSamsung46', distance=20)
-BigMonitor.setSizePix([960, 270])
+BigMonitor.setSizePix([1920, 1080])
 # BigMonitor.setSizePix([3840, 1080])
 BigMonitor.setWidth(117)
 
 
-win = visual.Window([960,270], monitor=BigMonitor,
+win = visual.Window([1920,1080], monitor=BigMonitor,
                     color=GREY, colorSpace=CS,
-                    allowGUI=True,
+                    allowGUI=False,
                     screen=1, fullScr=True,
                     units='pix')
 
@@ -80,7 +80,7 @@ zmq_poller.register(socket, zmq.POLLIN)
 trialClock = core.Clock()
 t = 0
 state = 'GRAY'
-flash_duration = 2 # s
+flash_duration = 100 # s
 while True:
     t = trialClock.getTime()
 
