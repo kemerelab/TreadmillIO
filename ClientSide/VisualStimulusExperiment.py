@@ -20,17 +20,30 @@ import argparse
 import yaml
 import csv
 import zmq
+import numpy as np
+
+
+NamedVersion = '1.0'
+
+
+import git
+repo = git.Repo(search_parent_directories=True)
+
+GitCommit = repo.head.object.hexsha
+GitChangedFiles = [fn.a_path for fn in repo.index.diff(None)]
+GitPatch = [fn.diff for fn in repo.index.diff(None, create_patch=True)]
 
 ### Maybe should add argcomplete for this program?
-
 
 # Command-line arguments: computer settings
 # Command-line arguments: computer settings
 parser = argparse.ArgumentParser(description='Run simple linear track experiment.')
 parser.add_argument('-P', '--serial-port', default='/dev/ttyACM0',
                    help='TTY device for USB-serial interface (e.g., /dev/ttyUSB0 or COM10)')
-parser.add_argument('--param-file', default='defaults.yaml',  
+parser.add_argument('-C','--param-file', default='defaults.yaml',  
                     help='YAML file containing task parameters')
+parser.add_argument('-R','--random-seed', default=None,  
+                    help='Random seed. If specified, this also overrides the YAML configuration file.')
 parser.add_argument('--output-dir', default='./',
                     help='Directory to write output file (defaults to cwd)')
 args = parser.parse_args()
@@ -44,36 +57,47 @@ now = datetime.datetime.now()
 log_filename = '{}{}.txt'.format('Log', now.strftime("%Y-%m-%d %H%M"))
 log_filename = os.path.join(args.output_dir, log_filename)
 
-cmd_log_filename = '{}{}.txt'.format('CommandLog', now.strftime("%Y-%m-%d %H%M"))
-cmd_log_filename = os.path.join(args.output_dir, cmd_log_filename)
-
-
-
 # YAML parameters: task settings
 with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
+
+
+if Config['Maze']['Type'] != 'StateMachine':
+    raise(NotImplementedError("Don't use this script for a VR"))
+
+DoLogCommands = False
+if 'LogCommands' in Config['Preferences']:
+    DoLogCommands = Config['Preferences']['LogCommands']
 
 EnableSound = False
 if 'EnableSound' in Config['Preferences']:
     EnableSound = Config['Preferences']['EnableSound']
 
-print('Normalizing stimuli:')
-StimuliList = Config['AuditoryStimuli']['StimuliList']
-for stimulus_name, stimulus in StimuliList.items(): 
-    print(' - ',stimulus_name)
-    for key, config_item in Config['AuditoryStimuli']['Defaults'].items():
-        if key not in stimulus:
-            stimulus[key] = config_item
-        elif isinstance(config_item, dict):
-            for subkey, sub_config_item in config_item.items():
-                if subkey not in stimulus[key]:
-                    stimulus[key][subkey] = sub_config_item
 
+# Check for random seed on command line or in preferences
+if args.random_seed is not None:
+    np.random.seed(int(args.random_seed))
+    print(f'Setting random seed to {args.random_seed}.')
+    if 'RandomSeed' in Config['Preferences']:
+        Config['Preferences']['RandomSeed'] = int(args.random_seed)
+        print('Overwriting random seed in preferences file (true value will be logged).')
+elif 'RandomSeed' in Config['Preferences']:
+    np.random.seed(Config['Preferences']['RandomSeed'])
+    print(f"Setting random seed to {Config['Preferences']['RandomSeed']}.")
 
-#----------------------- parameters --------------
-
-if Config['Maze']['Type'] != 'StateMachine':
-    raise(NotImplementedError("Don't use this script for a VR"))
+#----------------------- Sound stimuli --------------
+if EnableSound:
+    print('Normalizing stimuli:')
+    StimuliList = Config['AuditoryStimuli']['StimuliList']
+    for stimulus_name, stimulus in StimuliList.items(): 
+        print(' - ',stimulus_name)
+        for key, config_item in Config['AuditoryStimuli']['Defaults'].items():
+            if key not in stimulus:
+                stimulus[key] = config_item
+            elif isinstance(config_item, dict):
+                for subkey, sub_config_item in config_item.items():
+                    if subkey not in stimulus[key]:
+                        stimulus[key][subkey] = sub_config_item
 
 
 if EnableSound:
@@ -101,6 +125,7 @@ if EnableSound:
         time.sleep(1.0)
 
 
+# --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
 from SerialInterface import SerialInterface
 
 Interface = SerialInterface(SerialPort=args.serial_port)
@@ -109,6 +134,8 @@ if 'GPIO' in Config:
     for gpio_label, gpio_config in Config['GPIO'].items():
         Interface.add_gpio(gpio_label, gpio_config)
 
+
+# ------------------- Read in State Machine States. ------------------------------------------------------------------
 
 from TaskStateMachine import DelayState, RewardState, VisualizationState, SetGPIOState
 
@@ -148,8 +175,9 @@ if FirstState is None:
 else:
     print('First state is {}'.format(FirstState))
 
+# BUG: Should check to make sure states are all connected properly?
 
-# ----- Communications to visual stimulus server
+# ----------------------- Initialize communications to VisualStimulusServer ---------------------------
 context = zmq.Context()
 socket = context.socket(zmq.PAIR)
 if 'VisualCommsPort' in Config['Preferences']:
@@ -158,14 +186,26 @@ else:
     port = "5556"
 
 
+
+# -------------------------- Start logging and stimulus connection -------------------------------------
 with open(log_filename, 'w', newline='') as log_file, \
-     open(cmd_log_filename, 'w', newline='') as cmd_log_file, \
      context.socket(zmq.PAIR) as socket:
 
     socket.connect("tcp://localhost:%s" % port)
 
+
+    ##### Write header to log file
+    print(f'VisualStimulusExperiment Data File.\n   Version {NamedVersion}',file=log_file)
+    print(f'   Git Commit: {GitCommit}',file=log_file)
+    if GitChangedFiles:
+        print(f'   ChangedFiles: {GitChangedFiles}',file=log_file)
+        print(f'Patch:\n{GitPatch}',file=log_file)
+    print('---',file=log_file)
+    yaml.dump(Config, log_file, indent=4)
+    print('---\n', file=log_file)
+
+    ##### Logging is actually CSV format
     writer = csv.writer(log_file)
-    cmd_writer = csv.writer(cmd_log_file)
 
     # ----------------- Initialization
     RewardPumpEndTime = 0
@@ -176,6 +216,7 @@ with open(log_filename, 'w', newline='') as log_file, \
 
     CurrentState = StateMachineDict[FirstState]
 
+    ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
     Interface.connect()
 
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
@@ -193,7 +234,7 @@ with open(log_filename, 'w', newline='') as log_file, \
         writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
         if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print('Heartbeat {} - 0x{:012b}'.format(MasterTime, GPIO))
+            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}')
 
         # -------------------- StateMachine -------------------- 
 
@@ -208,7 +249,8 @@ with open(log_filename, 'w', newline='') as log_file, \
                 delay = CurrentState.getDelay()
                 StateMachineWaitEndTime = MasterTime + delay
                 StateMachineWaiting = True
-                cmd_writer.writerow(['Delay', MasterTime, delay])
+                if DoLogCommands:
+                    writer.writerow([MasterTime,-1,-1,-1,-1,'Delay', delay])
 
             elif CurrentState.Type == 'SetGPIO':
                 Pin, Value = CurrentState.getPinValue()
@@ -216,7 +258,8 @@ with open(log_filename, 'w', newline='') as log_file, \
                     Interface.raise_output(Pin)
                 else:
                     Interface.lower_output(Pin)
-                cmd_writer.writerow(['SetGPIO', MasterTime, Pin, Value])
+                if DoLogCommands:
+                    writer.writerow([MasterTime,-1,-1,-1,-1,'SetGPIO', Pin, Value])
                 CurrentState = StateMachineDict[CurrentState.NextState]
 
             elif CurrentState.Type == 'Reward':
@@ -226,17 +269,18 @@ with open(log_filename, 'w', newline='') as log_file, \
                 Interface.raise_output(RewardPin)
                 if EnableSound and RewardSound:
                     Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
-                print('Reward!')
-                cmd_writer.writerow(['Reward', MasterTime])
+                #print('Reward!')
+                if DoLogCommands:
+                    writer.writerow([MasterTime,-1,-1,-1,-1,'Reward', RewardPin, PulseLength])
                 CurrentState = StateMachineDict[CurrentState.NextState]
                 
             elif (CurrentState.Type == 'Visualization'):
                 command = CurrentState.getVisualizationCommand()
-                cmd_writer.writerow([command, MasterTime])
-                print(command)
+                #print(command)
+                if DoLogCommands:
+                    writer.writerow([MasterTime,-1,-1,-1,-1,'Visualization', command])                
                 socket.send_string(command)
                 CurrentState = StateMachineDict[CurrentState.NextState]
-
 
         # Reward
         if RewardPumpActive:
