@@ -83,8 +83,7 @@ void sequenceLEDs(void) {
         return;
     }
 
-    /*
-       switch (led) {
+    switch (led) {
        case 0:
        digitalWrite(LED0, 1);
        digitalWrite(LED2, 0);
@@ -105,12 +104,11 @@ void sequenceLEDs(void) {
        digitalWrite(LED2, 0);
        led = 0;
        break;
-       }
-     */
+    }
 }
 
 
-#define SERIAL_READS_BEFORE_LEAVING 400
+#define SERIAL_READS_BEFORE_LEAVING 20
 
 int NextUpdate = 0;
 int NextClear = 500;
@@ -127,7 +125,7 @@ void loop() {
     }
 
 
-    
+/*    
     if (MasterClock > NextClear) {
         digitalWrite(LED0, 0);
         digitalWrite(LED1, 0);
@@ -146,6 +144,7 @@ void loop() {
             NextUpdate = MasterClock + 1000;
         }
     }
+*/
 
     int SerialBufferFlushCounter = SERIAL_READS_BEFORE_LEAVING;
     uint8_t IncomingByte = '\0';
@@ -154,6 +153,8 @@ void loop() {
             (SerialBufferFlushCounter > 0)) {
 
         IncomingByte = Serial.read();
+        SerialBufferFlushCounter--;
+
 
         while ((IncomingByte != SerialCommandStart) && 
                 (SerialBufferFlushCounter > 0)) {
