@@ -12,9 +12,7 @@ CS = 'rgb'  # ColorSpace
 WHITE = [1, 1, 1]
 LIGHT_GREY = [0.5, 0.5, 0.5]
 GREY = [0, 0, 0]
-BLUE_GREY = [-1, -1, -0.5]
 BLACK = [-1, -1, -1]
-BLUE =[-1, -1, 1]
 
 ## ---- Comment this section in to try a different colorspace
 # CS = 'rgb255'  # ColorSpace
@@ -31,7 +29,7 @@ BigMonitor.setWidth(117)
 
 
 win = visual.Window([3840,1080], monitor=BigMonitor,
-                    color=BLUE_GREY, colorSpace=CS,
+                    color=GREY, colorSpace=CS,
                     allowGUI=False,
                     screen=1, fullScr=True,
                     units='pix')
@@ -43,9 +41,7 @@ EdgeOfStimulus = math.tan(CenterEmpty/2 / 180 * math.pi) * MouseDistance
 HalfWidthOfStimulus = MonitorWidth/2 - EdgeOfStimulus
 StimulusWidth = HalfWidthOfStimulus * 2
 
-
-img1 = np.tile(np.array([[BLACK, BLUE], [BLUE, BLACK]]), (10,10,1)) # Image bitmap
-img2 = np.tile(np.array([[BLUE, BLACK], [BLACK, BLUE]]), (10,10,1)) # Image bitmap
+img = np.tile(np.array([[-1, 1], [1, -1]]), (10,10)) # Image bitmap
 
 # ADD CENTER STIMULUS!!!
 
@@ -67,12 +63,10 @@ stimulus_right = visual.ImageStim(win=win, image=img,
 
 def animateStimulus(t, stimulus, rate):
     if np.mod(t*2*rate, 2) < 1.0:
-      # stimulus.color = WHITE
-        stimulus.setImage(img1)
+        stimulus.color = WHITE
         stimulus.draw()
     else:
-      # stimulus.color = BLACK
-        stimulus.setImage(img2)
+        stimulus.color = BLACK
         stimulus.draw()
     return True
 
