@@ -1,0 +1,3 @@
+# Don't save log files
+Log*.txt
+

@@ -27,4 +27,5 @@ eagle.epf
 *.dri
 *.gpi
 
+# Dropbox
 .DS_Store
