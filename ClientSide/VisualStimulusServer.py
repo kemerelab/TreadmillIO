@@ -13,6 +13,8 @@ WHITE = [1, 1, 1]
 LIGHT_GREY = [0.5, 0.5, 0.5]
 GREY = [0, 0, 0]
 BLACK = [-1, -1, -1]
+BLUE_GREY = [-1, -1, -0.5]
+BLUE =[-1, -1, 1]
 
 ## ---- Comment this section in to try a different colorspace
 # CS = 'rgb255'  # ColorSpace
@@ -27,11 +29,10 @@ BigMonitor = monitors.Monitor('CurvedSamsung46', distance=20)
 BigMonitor.setSizePix([3840, 1080])
 BigMonitor.setWidth(117)
 
-
 win = visual.Window([3840,1080], monitor=BigMonitor,
-                    color=GREY, colorSpace=CS,
+                    color=BLUE_GREY, colorSpace=CS,
                     allowGUI=False,
-                    screen=1, fullScr=True,
+                    screen=2, fullScr=True,
                     units='pix')
 
 MonitorWidth = 117.0 # cm
@@ -41,33 +42,44 @@ EdgeOfStimulus = math.tan(CenterEmpty/2 / 180 * math.pi) * MouseDistance
 HalfWidthOfStimulus = MonitorWidth/2 - EdgeOfStimulus
 StimulusWidth = HalfWidthOfStimulus * 2
 
-img = np.tile(np.array([[-1, 1], [1, -1]]), (10,10)) # Image bitmap
+#img1 = np.tile(np.array([[-1, 1], [1, -1]]), (10,10)) # Image bitmap
+#img2 = np.tile(np.array([[1, -1], [-1, 1]]), (10,10)) # Image bitmap
+
+img1 = np.tile(np.array([[BLACK, BLUE], [BLUE, BLACK]]), (10,10,1)) # Image bitmap
+img2 = np.tile(np.array([[BLUE, BLACK], [BLACK, BLUE]]), (10,10,1)) # Image bitmap
+
 
 # ADD CENTER STIMULUS!!!
 
-stimulus_left = visual.ImageStim(win=win, image=img,
-                     colorSpace=CS,
-                     color=WHITE,
+stimulus_left1 = visual.ImageStim(win=win, image=img1, colorSpace=CS, color=WHITE,
                      size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
                      pos=(-MonitorWidth/2, 0), # monitor width / 2 = left edge
                      units='cm')
 
-stimulus_right = visual.ImageStim(win=win, image=img,
-                     colorSpace=CS,
-                     color=WHITE,
+stimulus_left2 = visual.ImageStim(win=win, image=img2, colorSpace=CS, color=WHITE,
+                     size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
+                     pos=(-MonitorWidth/2, 0), # monitor width / 2 = left edge
+                     units='cm')
+
+
+stimulus_right1 = visual.ImageStim(win=win, image=img1, colorSpace=CS, color=WHITE,
+                     size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
+                     pos=(MonitorWidth/2, 0), # monitor width / 2 = left edge
+                     units='cm')
+
+stimulus_right2 = visual.ImageStim(win=win, image=img2, colorSpace=CS, color=WHITE,
                      size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
                      pos=(MonitorWidth/2, 0), # monitor width / 2 = left edge
                      units='cm')
 
 
-
-def animateStimulus(t, stimulus, rate):
+def animateStimulus(t, stimulus1, stimulus2, rate):
     if np.mod(t*2*rate, 2) < 1.0:
-        stimulus.color = WHITE
-        stimulus.draw()
+        #stimulus.color = WHITE
+        stimulus1.draw()
     else:
-        stimulus.color = BLACK
-        stimulus.draw()
+        #stimulus.color = BLACK
+        stimulus2.draw()
     return True
 
 port = "5556"
@@ -87,9 +99,9 @@ while True:
     if state != 'GRAY':
         if (t < tend):
             if state =='LEFT':
-                animateStimulus(t - tstart, stimulus_left, rate=8.0)
+                animateStimulus(t - tstart, stimulus_left1, stimulus_left2, rate=8.0)
             elif state == 'RIGHT':
-                animateStimulus(t - tstart, stimulus_right, rate=8.0)
+                animateStimulus(t - tstart, stimulus_right1, stimulus_right2, rate=8.0)
         else:
             state = 'GRAY'
 
