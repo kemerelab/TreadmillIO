@@ -8,6 +8,8 @@ import time
 import math
 
 
+USE_BLUE = True
+
 CS = 'rgb'  # ColorSpace
 WHITE = [1, 1, 1]
 LIGHT_GREY = [0.5, 0.5, 0.5]
@@ -24,16 +26,27 @@ BLUE =[-1, -1, 1]
 # BLACK = [0, 0, 0]
 
 
+#ScreenSize = [1920, 1080]
+#ScreenSize = [1024,768]
+ScreenSize = [3840,1080]
+
 BigMonitor = monitors.Monitor('CurvedSamsung46', distance=20)
-# BigMonitor.setSizePix([1920, 1080])
-BigMonitor.setSizePix([3840, 1080])
+BigMonitor.setSizePix(ScreenSize)
 BigMonitor.setWidth(117)
 
-win = visual.Window([3840,1080], monitor=BigMonitor,
-                    color=BLUE_GREY, colorSpace=CS,
-                    allowGUI=False,
-                    screen=2, fullScr=True,
-                    units='pix')
+
+if USE_BLUE:
+    win = visual.Window(ScreenSize, monitor=BigMonitor,
+                        color=BLUE_GREY, colorSpace=CS,
+                        allowGUI=False,
+                        screen=2, fullScr=True,
+                        units='pix')
+else:
+    win = visual.Window(ScreenSize, monitor=BigMonitor,
+                        color=GREY, colorSpace=CS,
+                        allowGUI=False,
+                        screen=2, fullScr=True,
+                        units='pix')
 
 MonitorWidth = 117.0 # cm
 MouseDistance = 20.0 # cm
@@ -42,14 +55,26 @@ EdgeOfStimulus = math.tan(CenterEmpty/2 / 180 * math.pi) * MouseDistance
 HalfWidthOfStimulus = MonitorWidth/2 - EdgeOfStimulus
 StimulusWidth = HalfWidthOfStimulus * 2
 
-#img1 = np.tile(np.array([[-1, 1], [1, -1]]), (10,10)) # Image bitmap
-#img2 = np.tile(np.array([[1, -1], [-1, 1]]), (10,10)) # Image bitmap
 
-img1 = np.tile(np.array([[BLACK, BLUE], [BLUE, BLACK]]), (10,10,1)) # Image bitmap
-img2 = np.tile(np.array([[BLUE, BLACK], [BLACK, BLUE]]), (10,10,1)) # Image bitmap
+if USE_BLUE:
+    img1 = np.tile(np.array([[BLACK, BLUE], [BLUE, BLACK]]), (10,10,1)) # Checkerboard bitmap 10x10 cell
+    img2 = np.tile(np.array([[BLUE, BLACK], [BLACK, BLUE]]), (10,10,1)) # Opposite phase
+else:
+    img1 = np.tile(np.array([[-1, 1], [1, -1]]), (10,10)) # Checkerboard bitmap
+    img2 = np.tile(np.array([[1, -1], [-1, 1]]), (10,10)) # Opposite phase
+
 
 
 # ADD CENTER STIMULUS!!!
+stimulus_center1 = visual.ImageStim(win=win, image=img1, colorSpace=CS, color=WHITE,
+                     size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
+                     pos=(0, 0), # centered
+                     units='cm')
+
+stimulus_center2 = visual.ImageStim(win=win, image=img2, colorSpace=CS, color=WHITE,
+                     size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
+                     pos=(0, 0), # centered
+                     units='cm')
 
 stimulus_left1 = visual.ImageStim(win=win, image=img1, colorSpace=CS, color=WHITE,
                      size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
@@ -60,7 +85,6 @@ stimulus_left2 = visual.ImageStim(win=win, image=img2, colorSpace=CS, color=WHIT
                      size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
                      pos=(-MonitorWidth/2, 0), # monitor width / 2 = left edge
                      units='cm')
-
 
 stimulus_right1 = visual.ImageStim(win=win, image=img1, colorSpace=CS, color=WHITE,
                      size=(StimulusWidth, StimulusWidth), # leave a 60 deg wid
@@ -75,10 +99,8 @@ stimulus_right2 = visual.ImageStim(win=win, image=img2, colorSpace=CS, color=WHI
 
 def animateStimulus(t, stimulus1, stimulus2, rate):
     if np.mod(t*2*rate, 2) < 1.0:
-        #stimulus.color = WHITE
         stimulus1.draw()
     else:
-        #stimulus.color = BLACK
         stimulus2.draw()
     return True
 
@@ -102,11 +124,12 @@ while True:
                 animateStimulus(t - tstart, stimulus_left1, stimulus_left2, rate=8.0)
             elif state == 'RIGHT':
                 animateStimulus(t - tstart, stimulus_right1, stimulus_right2, rate=8.0)
+            elif state == 'CENTER':
+                animateStimulus(t - tstart, stimulus_center1, stimulus_center2, rate=8.0)
         else:
             state = 'GRAY'
 
     win.flip()          #update the screen
-
 
 
     zmq_msgs = dict(zmq_poller.poll(timeout=0)) 
@@ -120,6 +143,10 @@ while True:
             tend = t + flash_duration
         elif zmq_command.upper() == "RIGHT":
             state = 'RIGHT'
+            tstart = t
+            tend = t + flash_duration
+        elif zmq_command.upper() == "CENTER":
+            state = 'CENTER'
             tstart = t
             tend = t + flash_duration
 
@@ -136,6 +163,10 @@ while True:
             tend = t + flash_duration
         elif keys in ['r','R','right']:
             state = 'RIGHT'
+            tstart = t
+            tend = t + flash_duration
+        elif keys in ['c','C']:
+            state = 'CENTER'
             tstart = t
             tend = t + flash_duration
 
