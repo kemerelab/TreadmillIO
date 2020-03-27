@@ -8,7 +8,7 @@ import time
 import math
 
 
-USE_BLUE = True
+USE_BLUE = True # CHANGE THIS TO FALSE TO USE Black/White instead of Black/Blue
 
 CS = 'rgb'  # ColorSpace
 WHITE = [1, 1, 1]
