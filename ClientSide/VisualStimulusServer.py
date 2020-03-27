@@ -126,6 +126,9 @@ while True:
                 animateStimulus(t - tstart, stimulus_right1, stimulus_right2, rate=8.0)
             elif state == 'CENTER':
                 animateStimulus(t - tstart, stimulus_center1, stimulus_center2, rate=8.0)
+            elif state == 'BOTH':
+                animateStimulus(t - tstart, stimulus_left1, stimulus_left2, rate=8.0)
+                animateStimulus(t - tstart, stimulus_right1, stimulus_right2, rate=8.0)
         else:
             state = 'GRAY'
 
@@ -149,6 +152,10 @@ while True:
             state = 'CENTER'
             tstart = t
             tend = t + flash_duration
+        elif zmq_command.upper() == "BOTH":
+            state = 'BOTH'
+            tstart = t
+            tend = t + flash_duration
 
 
     #handle key presses each frame
@@ -167,6 +174,10 @@ while True:
             tend = t + flash_duration
         elif keys in ['c','C']:
             state = 'CENTER'
+            tstart = t
+            tend = t + flash_duration
+        elif keys in ['b','B']:
+            state = 'BOTH'
             tstart = t
             tend = t + flash_duration
 
