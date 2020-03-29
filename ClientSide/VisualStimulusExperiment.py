@@ -101,7 +101,7 @@ if EnableSound:
 
 
 if EnableSound:
-    from SoundStimulus import SoundStimulus
+    from treadmillio import SoundStimulus
 
     BackgroundSounds = {}
     Beeps = {}
@@ -126,56 +126,20 @@ if EnableSound:
 
 
 # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
-from SerialInterface import SerialInterface
-
-Interface = SerialInterface(SerialPort=args.serial_port)
+from treadmillio import SerialInterface
 
 if 'GPIO' in Config:
-    for gpio_label, gpio_config in Config['GPIO'].items():
-        Interface.add_gpio(gpio_label, gpio_config)
-
+    Interface = SerialInterface(SerialPort=args.serial_port, config=Config['GPIO'])
+else:
+    Interface = SerialInterface(SerialPort=args.serial_port, config=None)
 
 # ------------------- Read in State Machine States. ------------------------------------------------------------------
 
-from TaskStateMachine import DelayState, RewardState, VisualizationState, SetGPIOState
-
-StateMachineDict = {}
-FirstState = None
-for state_name, state in Config['StateMachine'].items():
-    if 'FirstState' in state and state['FirstState']:
-        FirstState = state_name
-
-    if (state['Type'] == 'Delay'):
-        StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
-
-    elif (state['Type'] == 'SetGPIO'):
-        if state['Params']['Pin'] not in Interface.GPIOs:
-            raise ValueError('GPIO pin not in defined GPIO list')
-        StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'])
-
-    elif (state['Type'] == 'Reward'):
-        if state['Params']['DispensePin'] not in Interface.GPIOs:
-            raise ValueError('Dispense pin not in defined GPIO list')
-        if EnableSound and state['Params']['RewardSound'] != 'None':
-            if state['Params']['RewardSound'] not in Beeps:
-                raise ValueError('Reward sound not in defined Beeps list')
-        StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
-
-    elif (state['Type'] == 'Visualization'):
-        StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
-
-    else:
-        raise(NotImplementedError("State machine elements other than " 
-                "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
-
-if FirstState is None:
-    FirstState = list(StateMachineDict.keys())[0]
-    print('First state in state machine not defined. '
-          'Picking first state in list: {}'.format(FirstState))
-else:
-    print('First state is {}'.format(FirstState))
+from treadmillio.taskstatemachine import create_state_machine
 
 # BUG: Should check to make sure states are all connected properly?
+StateMachineDict, FirstState = create_state_machine(Config['StateMachine'], Interface.GPIOs)
+
 
 # ----------------------- Initialize communications to VisualStimulusServer ---------------------------
 context = zmq.Context()

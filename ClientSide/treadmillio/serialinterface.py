@@ -3,7 +3,7 @@ import serial
 import struct
 
 class SerialInterface():
-    def __init__(self, SerialPort='/dev/ttyS0', version=2):
+    def __init__(self, SerialPort='/dev/ttyS0', version=2, config=None):
         self.version = version
         self.serialPort = SerialPort
 
@@ -16,6 +16,11 @@ class SerialInterface():
         else:
             self.GPIO_state = int(0) # b'\x00'
             self.OutputPinMask = int(0)
+
+        if config is not None:
+            for gpio_label, gpio_config in config.items():
+                self.add_gpio(gpio_label, gpio_config)
+
 
     def connect(self):
         print('Connecting to serial/USB interface {} and synchronizing.'.format(self.serialPort))

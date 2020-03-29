@@ -1,6 +1,7 @@
 import time
 import numpy as np
 from itertools import cycle
+import warnings
 
 class TaskState:
     def __init__(self, currentStateLabel, nextStateLabel):
@@ -89,3 +90,50 @@ class SetGPIOState(TaskState):
     def getPinValue(self):
         return self.Pin, self.Value
 
+
+def create_state_machine(config, gpio_names=[], beep_names=[]):
+    StateMachineDict = {}
+    FirstState = None
+
+    EnableSound = bool(beep_names) # test if empty
+
+    if not(gpio_names):
+        warnings.warn('StateMachine being created without GPIO (gpio_names is empty).',
+                       SyntaxWarning)
+
+
+    for state_name, state in config.items():
+        if 'FirstState' in state and state['FirstState']:
+            FirstState = state_name
+
+        if (state['Type'] == 'Delay'):
+            StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
+
+        elif (state['Type'] == 'SetGPIO'):
+            if state['Params']['Pin'] not in gpio_names:
+                raise ValueError('GPIO pin not in defined GPIO list')
+            StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'])
+
+        elif (state['Type'] == 'Reward'):
+            if state['Params']['DispensePin'] not in gpio_names:
+                raise ValueError('Dispense pin not in defined GPIO list')
+            if EnableSound and state['Params']['RewardSound'] != 'None':
+                if state['Params']['RewardSound'] not in beep_names:
+                    raise ValueError('Reward sound not in defined Beeps list')
+            StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
+
+        elif (state['Type'] == 'Visualization'):
+            StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
+
+        else:
+            raise(NotImplementedError("State machine elements other than " 
+                    "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
+
+    if FirstState is None:
+        FirstState = list(StateMachineDict.keys())[0]
+        print('First state in state machine not defined. '
+            'Picking first state in list: {}'.format(FirstState))
+    else:
+        print('First state is {}'.format(FirstState))
+
+    return StateMachineDict, FirstState
