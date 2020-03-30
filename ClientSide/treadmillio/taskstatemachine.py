@@ -62,9 +62,17 @@ class VisualizationState(TaskState):
             return self.command[next(self.CommandIndices)]
 
 class RewardState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, Params):
+    def __init__(self, currentStateLabel, nextStateLabel, Params, serialInterface, beep_names):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'Reward'
+
+        self.serialInterface = serialInterface
+
+        if Params['DispensePin'] not in serialInterface.GPIOs:
+            raise ValueError('Dispense pin not in defined GPIO list')
+        if Params['RewardSound'] != 'None':
+            if Params['RewardSound'] not in beep_names:
+                raise ValueError('Reward sound not in defined Beeps list')
 
         self.RewardPin = Params['DispensePin']
         if 'PumpRunTime' in Params:
@@ -75,6 +83,20 @@ class RewardState(TaskState):
             self.RewardSound = Params['RewardSound']
         else:
             self.RewardSound = None
+
+        self.EventTimer = 0
+
+    def startExecution(self):
+        self.serialInterface.raise_output(selfRewardPin)
+        if self.RewardSound:
+            Beeps[self.RewardSound].change_gain(stimulus['BaselineGain'])
+
+    def endExecution(self):
+        self.serialInterface.lower_output(self.RewardPin)
+        if self.RewardSound:
+            Beeps[self.RewardSound].change_gain(stimulus['BaselineGain'])
+
+
 
     def rewardValues(self):
         return self.RewardPin, self.PulseLength, self.RewardSound
@@ -137,3 +159,56 @@ def create_state_machine(config, gpio_names=[], beep_names=[]):
         print('First state is {}'.format(FirstState))
 
     return StateMachineDict, FirstState
+
+
+class TaskStateMachine():
+  def __init__(self, config, serialInterface=None, auditoryStimuli=None):
+    
+    self.StateMachineDict = {}
+    self.FirstState = None
+    self.EnableSound = bool(auditoryStimuli) # test if empty
+
+    if not(serialInterface):
+        warnings.warn('StateMachine being created without GPIO (gpio_names is empty).',
+                       SyntaxWarning)
+
+    # ---------------- Process YAML config file / dictionary -------------------------------------------
+    for state_name, state in config.items():
+        if 'FirstState' in state and state['FirstState']:
+            FirstState = state_name
+
+        if (state['Type'] == 'Delay'):
+            self.StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
+
+        elif (state['Type'] == 'SetGPIO'):
+            if state['Params']['Pin'] not in gpio_names:
+                raise ValueError('GPIO pin not in defined GPIO list')
+            self.StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'])
+
+        elif (state['Type'] == 'Reward'):
+            self.StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
+
+        elif (state['Type'] == 'Visualization'):
+            self.StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
+
+        else:
+            raise(NotImplementedError("State machine elements other than " 
+                    "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
+
+    if FirstState is None:
+        FirstState = list(StateMachineDict.keys())[0]
+        print('First state in state machine not defined. '
+            'Picking first state in list: {}'.format(FirstState))
+    else:
+        print('First state is {}'.format(FirstState))
+
+    
+    self.RewardPumpEndTime = 0
+    self.RewardPumpActive = False
+
+    self.StateMachineWaiting = False
+    self.StateMachineWaitEndTime = 0
+
+
+
+
