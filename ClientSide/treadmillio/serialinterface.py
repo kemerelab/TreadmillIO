@@ -1,6 +1,7 @@
 
 import serial
 import struct
+import warnings
 
 class SerialInterface():
     def __init__(self, SerialPort='/dev/ttyS0', version=2, config=None):
@@ -209,3 +210,25 @@ class SerialInterface():
         if pin_config['Type'] == 'Output':
             self.OutputPinMask |= 0x01 << pin_config['Number']
 
+        self.GPIOs[name]['IsPulsed'] = False
+        self.GPIOs[name]['PulseOffTime'] = -1
+
+    def process_pulses(self, time):
+        for gpio_name, gpio in self.GPIOs.items():
+            if gpio['IsPulsed']:
+                if (time > gpio['PulseOffTime']):
+                    self.lower_output(gpio_name)
+
+    def pulse_output(self, GPIO, off_time):
+        # Note: Calling pulse_output when a pulse is already active
+        #       will cause the pulse_duration to be updated
+        #       Calling raise_output or lower_output on this GPIO subsequently
+        #       will cause the pulse to be cancelled.
+        if (not self.GPIOs[GPIO]['IsPulsed']):
+            self.raise_output(GPIO)
+            self.GPIOs[GPIO]['IsPulsed'] = True
+            self.GPIOs[GPIO]['PulseOffTime'] = off_time
+        else:
+            self.GPIOs[GPIO]['PulseOffTime'] = off_time
+            warnings.warn("GPIO pulse instructed when already in a pulse.", UserWarning)
+        

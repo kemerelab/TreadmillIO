@@ -86,44 +86,12 @@ elif 'RandomSeed' in Config['Preferences']:
     print(f"Setting random seed to {Config['Preferences']['RandomSeed']}.")
 
 #----------------------- Sound stimuli --------------
-if EnableSound:
-    print('Normalizing stimuli:')
-    StimuliList = Config['AuditoryStimuli']['StimuliList']
-    for stimulus_name, stimulus in StimuliList.items(): 
-        print(' - ',stimulus_name)
-        for key, config_item in Config['AuditoryStimuli']['Defaults'].items():
-            if key not in stimulus:
-                stimulus[key] = config_item
-            elif isinstance(config_item, dict):
-                for subkey, sub_config_item in config_item.items():
-                    if subkey not in stimulus[key]:
-                        stimulus[key][subkey] = sub_config_item
 
+from treadmillio.soundstimulus import create_sound_stimuli
 
-if EnableSound:
-    from treadmillio import SoundStimulus
+BackgroundSounds, Beeps, SoundStimuliList = create_sound_stimuli(Config['AuditoryStimuli'])
 
-    BackgroundSounds = {}
-    Beeps = {}
-
-    for stimulus_name, stimulus in StimuliList.items():
-        filename = stimulus['Filename']
-        if Config['Preferences']['AudioFileDirectory']:
-            filename = os.path.join(Config['Preferences']['AudioFileDirectory'], filename)
-        print('Loading: {}'.format(filename))
-
-        if stimulus['Type'] == 'Background':
-            BackgroundSounds[stimulus_name] = SoundStimulus(filename=filename)
-            BackgroundSounds[stimulus_name].change_gain(stimulus['BaselineGain'])
-        elif stimulus['Type'] == 'Beep':
-            Beeps[stimulus_name] = SoundStimulus(filename=filename)
-            Beeps[stimulus_name].change_gain(stimulus['BaselineGain'])
-            Beeps[stimulus_name].change_gain(-90.0) # beep for a very short moment
-        elif stimulus['Type'] == 'Localized':
-            raise(NotImplementedError("Localized auditory stimuli not supported for StateMachine control script."))
-
-        time.sleep(1.0)
-
+print(Beeps)
 
 # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
 from treadmillio import SerialInterface
@@ -138,7 +106,7 @@ else:
 from treadmillio.taskstatemachine import create_state_machine
 
 # BUG: Should check to make sure states are all connected properly?
-StateMachineDict, FirstState = create_state_machine(Config['StateMachine'], Interface.GPIOs)
+StateMachineDict, FirstState = create_state_machine(Config['StateMachine'], Interface, Beeps)
 
 
 # ----------------------- Initialize communications to VisualStimulusServer ---------------------------
@@ -231,9 +199,9 @@ with open(log_filename, 'w', newline='') as log_file, \
                 RewardPumpActive = True
                 RewardPumpEndTime = MasterTime + PulseLength
                 Interface.raise_output(RewardPin)
+                print('Reward!')
                 if EnableSound and RewardSound:
-                    Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
-                #print('Reward!')
+                    Beeps[RewardSound].change_gain(Beeps[RewardSound].baseline_gain)
                 if DoLogCommands:
                     writer.writerow([MasterTime,-1,-1,-1,-1,'Reward', RewardPin, PulseLength])
                 CurrentState = StateMachineDict[CurrentState.NextState]
@@ -252,7 +220,7 @@ with open(log_filename, 'w', newline='') as log_file, \
                 RewardPumpActive = False
                 Interface.lower_output(RewardPin)
                 if EnableSound and RewardSound:
-                    Beeps[RewardSound].change_gain(-90.0)
+                    Beeps[RewardSound].change_gain(Beeps[RewardSound].off_gain)
 
 
 

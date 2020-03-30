@@ -62,7 +62,7 @@ class VisualizationState(TaskState):
             return self.command[next(self.CommandIndices)]
 
 class RewardState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, Params, serialInterface, beep_names):
+    def __init__(self, currentStateLabel, nextStateLabel, Params, serialInterface, beeps):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'Reward'
 
@@ -70,8 +70,8 @@ class RewardState(TaskState):
 
         if Params['DispensePin'] not in serialInterface.GPIOs:
             raise ValueError('Dispense pin not in defined GPIO list')
-        if Params['RewardSound'] != 'None':
-            if Params['RewardSound'] not in beep_names:
+        if ('RewardSound' in Params) and (Params['RewardSound'] != 'None'):
+            if Params['RewardSound'] not in beeps:
                 raise ValueError('Reward sound not in defined Beeps list')
 
         self.RewardPin = Params['DispensePin']
@@ -102,24 +102,25 @@ class RewardState(TaskState):
         return self.RewardPin, self.PulseLength, self.RewardSound
 
 class SetGPIOState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, Params):
+    def __init__(self, currentStateLabel, nextStateLabel, params, serial_interface):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'SetGPIO'
 
-        self.Pin = Params['Pin']
-        self.Value = Params['Value']
+        if params['Pin'] not in serial_interface.GPIOs:
+            raise ValueError('GPIO pin not in defined GPIO list')
+
+        self.Pin = params['Pin']
+        self.Value = params['Value']
 
     def getPinValue(self):
         return self.Pin, self.Value
 
 
-def create_state_machine(config, gpio_names=[], beep_names=[]):
+def create_state_machine(config, serial_interface, beeps):
     StateMachineDict = {}
     FirstState = None
 
-    EnableSound = bool(beep_names) # test if empty
-
-    if not(gpio_names):
+    if not(serial_interface):
         warnings.warn('StateMachine being created without GPIO (gpio_names is empty).',
                        SyntaxWarning)
 
@@ -132,17 +133,11 @@ def create_state_machine(config, gpio_names=[], beep_names=[]):
             StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
 
         elif (state['Type'] == 'SetGPIO'):
-            if state['Params']['Pin'] not in gpio_names:
-                raise ValueError('GPIO pin not in defined GPIO list')
-            StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'])
+            StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'], serial_interface)
 
         elif (state['Type'] == 'Reward'):
-            if state['Params']['DispensePin'] not in gpio_names:
-                raise ValueError('Dispense pin not in defined GPIO list')
-            if EnableSound and state['Params']['RewardSound'] != 'None':
-                if state['Params']['RewardSound'] not in beep_names:
-                    raise ValueError('Reward sound not in defined Beeps list')
-            StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
+            StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'], 
+                                                       serial_interface, beeps)
 
         elif (state['Type'] == 'Visualization'):
             StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
