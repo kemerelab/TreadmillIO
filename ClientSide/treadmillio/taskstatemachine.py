@@ -74,8 +74,6 @@ class RewardState(TaskState):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'Reward'
 
-        print(sound_controller)
-
         self.io_interface = io_interface
 
         if params['DispensePin'] not in io_interface.GPIOs:
@@ -114,7 +112,34 @@ class SetGPIOState(TaskState):
 
     def getPinValue(self):
         return self.Pin, self.Value
+
+class SetSoundStimulusState(TaskState):
+    def __init__(self, currentStateLabel, nextStateLabel, params, sound_controller):
+        TaskState.__init__(self, currentStateLabel, nextStateLabel)
+        self.Type = 'SetSoundState'
+
+        self.sound_controller = sound_controller
+
+        if ('Sound' not in params) or ('Value' not in params):
+            raise(ValueError("SetSoundStimulusState needs a 'Sound' and a 'Value'."))
         
+        if params['Sound'] not in sound_controller.BackgroundSounds:
+                raise(ValueError('SetSoundStimulusState sound not found in Background sounds list'))
+
+        self.Sound = params['Sound']
+        if  params['Value'] not in ['On','Off']:
+            raise(ValueError("SetSoundStimulusState 'Value' must be 'On' or 'Off'"))
+        self.Value = params['Value']
+        if self.Value == 'On':
+            self.gain = sound_controller.BackgroundSounds[params['Sound']].background_gain
+        elif self.Value == 'Off':
+            self.gain = sound_controller.BackgroundSounds[params['Sound']].off_gain
+
+
+    def set_gain():
+        if self.sound_controller:
+            self.sound_controller.BackgroundSounds[self.Sound].change_gain(self.gain)
+
 
 class TaskStateMachine():
     def __init__(self, config, io_interface=None, sound_controller=None):
@@ -153,6 +178,10 @@ class TaskStateMachine():
             elif (state['Type'] == 'SetGPIO'):
                 self.StateMachineDict[state_name] = SetGPIOState(
                     state_name, state['NextState'], state['Params'], io_interface)
+
+            elif (state['Type'] == 'SetSoundState'):
+                self.StateMachineDict[state_name] = SetSoundStimulusState(
+                    state_name, state['NextState'], state['Params'], sound_controller)
 
             elif (state['Type'] == 'Reward'):
                 print(sound_controller)
@@ -226,6 +255,14 @@ class TaskStateMachine():
                     self.io_interface.lower_output(pin)
                 if logger:
                     logger([time,-1,-1,-1,-1,'SetGPIO', pin, level])
+                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+
+            elif self.CurrentState.Type == 'SetSoundState':
+                if self.sound_controller:
+                    self.CurrentState.set_gain()
+                if logger:
+                    # TODO: log which sound and which level!
+                    logger([time,-1,-1,-1,-1,'SetSoundState')
                 self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 
             elif self.CurrentState.Type == 'Reward':

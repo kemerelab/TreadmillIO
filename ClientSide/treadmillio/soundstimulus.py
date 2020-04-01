@@ -14,6 +14,19 @@ def error(msg):
 def info(msg):
     pass
 
+def jackplay_cmd(speaker, channel, filename):
+    return ['/usr/local/bin/sndfile-jackplay',
+            '-l', '0', # this makes the sound file loop infinitely
+            '-a=minimixer-{}:{}'.format(speaker['Name'], channel), 
+            '{}'.format(filename)]
+
+def jackcapture_cmd(device):
+    return ['/usr/local/bin/jack_capture',
+            '--channels', '1',
+            '--port', '{}:{}'.format(device['ClientName'], device['PortName']),
+            '--timestamp',
+            '--filename-prefix', '{}/{}'.format(args.output_dir, device['Name'])]
+
 class SoundStimulusController():
     def __init__(self, sound_config, track_length=None, verbose=0):
         self.p_minimix = None
