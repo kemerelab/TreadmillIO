@@ -7,11 +7,8 @@ Info: # "Info" configuration options can be overridden by command line options
 Preferences:
   HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
-  VisualCommsPort: 5556
   LogCommands: True
   EnableSound: True
-
-
 
 GPIO: # A list of GPIO pins used in the task
   Camera: # This is an arbitrary label used later to configure Reward
@@ -61,51 +58,58 @@ GPIO: # A list of GPIO pins used in the task
     Type: 'Input_Disable'
 
 Maze:
+  #Type: 'VR' # VR or physical
   Type: 'StateMachine' # VR or physical
-  Length: 100.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
+  EncoderGain: 4096.0 # Encoder value per revolution
+  Length: 150.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
+  WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
+  TrackTransform: None # Not currently implemented.
 
-StateMachine:
-  BlankScreen:
-    Type: 'Visualization'
-    Params:
-      VisType: 'Fixed'
-      Command: 'GREY'
-    NextState: 'Intertrial'
-  Intertrial:
-    Type: 'Delay'
-    Params:
-      Duration: 'Fixed'
-      Value: 5000
-    NextState: 'StimulusPresentation'
-  StimulusPresentation:
-    FirstState: True
-    Type: 'Visualization'
-    Params:
-      VisType: 'Random'
-      Options:
-        Right:
-          Command: 'RIGHT'
-          Probability: 1
-        Left:
-          Command: 'LEFT'
-          Probability: 1
-    NextState: 'StimulusPresentationDelay'
-  StimulusPresentationDelay:
-    Type: 'Delay'
-    Params:
-      Duration: 'Exponential'
-      Rate: 1000
-      Min: 2000
-      Max: 4000
-    NextState: 'Reward'
-  Reward:
-      Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
-      NextState: 'BlankScreen'
-      Params:
-        RewardSound: 'RewardSound' # The name of the auditory stimulus (of type "Beep") which should be played 
-        DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
-        PumpRunTime: 250 # How long to run the reward pump for. Note that this is also the duration
-                          # of time that any associated Beep will be played.
+
+# StateMachine:
+#   VisualCommsPort: 5556
+
+#   States:
+#     BlankScreen:
+#       Type: 'Visualization'
+#       Params:
+#         VisType: 'Fixed'
+#         Command: 'GREY'
+#       NextState: 'Intertrial'
+#     Intertrial:
+#       Type: 'Delay'
+#       Params:
+#         Duration: 'Fixed'
+#         Value: 5000
+#       NextState: 'StimulusPresentation'
+#     StimulusPresentation:
+#       FirstState: True
+#       Type: 'Visualization'
+#       Params:
+#         VisType: 'Random'
+#         Options:
+#           Right:
+#             Command: 'RIGHT'
+#             Probability: 1
+#           Left:
+#             Command: 'LEFT'
+#             Probability: 1
+#       NextState: 'StimulusPresentationDelay'
+#     StimulusPresentationDelay:
+#       Type: 'Delay'
+#       Params:
+#         Duration: 'Exponential'
+#         Rate: 1000
+#         Min: 2000
+#         Max: 4000
+#       NextState: 'Reward'
+#     Reward:
+#         Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
+#         NextState: 'BlankScreen'
+#         Params:
+#           RewardSound: 'RewardSound' # The name of the auditory stimulus (of type "Beep") which should be played 
+#           DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
+#           PumpRunTime: 300 # How long to run the reward pump for. Note that the Beep duration is specified in its config
 
 AuditoryStimuli:
   AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds'
@@ -122,6 +126,43 @@ AuditoryStimuli:
       CutoffGain: -60.0 #dB at cutoff
 
   StimuliList:
+    BackgroundSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      MinimixInputPort: 1 # jackminimix channel to use. By default, these will be auto-assigned if not specified
+      MinimixChannel: 'left' # stereo audio channel whose volume should be controlled for this stimulus
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      BaselineGain: -5.0
+      Filename: 'tone_cloud.wav'
+      Color: 'pink' # Matplotlib color name used for visualization system
+    Zone_1:
+      CenterPosition: 12.5 
+      Filename: 'tone_7kHz.wav'
+      Modulation:
+        Width: 10
+      Color: 'lime'
+    Zone_2:
+      CenterPosition: 102.5 
+      Filename: 'tone_11kHz.wav'
+      Modulation:
+        Width: 25
+      Color: 'orange'
     RewardSound:
       Type: 'Beep'
-      Filename: 'tone_11kHz.wav'
+      Filename: 'tone_3kHz.wav'
+      Duration: 250 # ms
+
+RewardZones:
+  RewardZoneList:
+    Reward1:
+      Type: 'Operant'
+      LickPin: 'Lick'
+      DispensePin: 'Reward'
+      PumpRunTime: 1000 # How long to run the reward pump for
+      LickTimeout: 3000.0 # Time between reward availability
+      MaxSequentialRewards: 50
+      RewardZoneStart: 145
+      RewardZoneEnd: 30
+      ResetZoneStart: 100
+      ResetZoneEnd: 130
+      Color: 'black'
+      RewardSound: 'RewardSound'
+

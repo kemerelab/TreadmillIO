@@ -27,8 +27,8 @@ BLUE =[-1, -1, 1]
 
 
 #ScreenSize = [1920, 1080]
-#ScreenSize = [1024,768]
-ScreenSize = [3840,1080]
+ScreenSize = [1024,768]
+#ScreenSize = [3840,1080]
 
 BigMonitor = monitors.Monitor('CurvedSamsung46', distance=20)
 BigMonitor.setSizePix(ScreenSize)

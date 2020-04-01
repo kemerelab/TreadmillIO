@@ -87,6 +87,7 @@ AuditoryStimuli:
     RewardSound:
       Type: 'Beep'
       Filename: 'tone_11kHz.wav'
+      Duration: 250 # ms
 
 RewardZones: # Configuration of Reward locations
   RewardZoneList:

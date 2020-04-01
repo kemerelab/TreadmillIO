@@ -21,6 +21,7 @@ import yaml
 import csv
 import zmq
 import numpy as np
+import warnings
 
 from contextlib import ExitStack
 
@@ -63,10 +64,6 @@ log_filename = os.path.join(args.output_dir, log_filename)
 with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
-
-if Config['Maze']['Type'] != 'StateMachine':
-    raise(NotImplementedError("Don't use this script for a VR"))
-
 DoLogCommands = False
 if 'LogCommands' in Config['Preferences']:
     DoLogCommands = Config['Preferences']['LogCommands']
@@ -74,7 +71,6 @@ if 'LogCommands' in Config['Preferences']:
 EnableSound = False
 if 'EnableSound' in Config['Preferences']:
     EnableSound = Config['Preferences']['EnableSound']
-
 
 # Check for random seed on command line or in preferences
 if args.random_seed is not None:
@@ -87,27 +83,61 @@ elif 'RandomSeed' in Config['Preferences']:
     np.random.seed(Config['Preferences']['RandomSeed'])
     print(f"Setting random seed to {Config['Preferences']['RandomSeed']}.")
 
+
+
+#----------------------- parameters --------------
+TrackTransform = None
+
+virtual_track_length = 1000.0 #cm
+d = 20.2 #cm
+encoder_gain = 4096.0
+if 'Maze' in Config:
+    if 'Length' in Config['Maze']:
+        virtual_track_length = Config['Maze']['Length'] #cm
+    if 'Diameter' in Config['Maze']:
+        d = Config['Maze']['WheelDiameter'] #cm diameter of the physical wheel; 150cm
+    if 'EncoderGain' in Config['Maze']:
+        encoder_gain = Config['Maze']['EncoderGain']
+
 #----------------------- Sound stimuli --------------
 
 from treadmillio.soundstimulus import SoundStimulusController
 
 with ExitStack() as stack:
-    SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], Config['Maze']['Length']))
+    if 'AuditoryStimuli' in Config and EnableSound:
+        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length))
+    else:
+        SoundController = None
+        if 'AuditoryStimuli' in Config:
+            warnings.warn("Config file specified AuditoryStimuli, but EnableSound is False.", RuntimeWarning)
 
     # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
     from treadmillio import SerialInterface
 
     if 'GPIO' in Config:
-        Interface = SerialInterface(SerialPort=args.serial_port, config=Config['GPIO'])
+        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=Config['GPIO']))
     else:
-        Interface = SerialInterface(SerialPort=args.serial_port, config=None)
+        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=None))
+        warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
+
 
     # ------------------- Read in State Machine States. ------------------------------------------------------------------
+    if 'StateMachine' in Config:
+        from treadmillio.taskstatemachine import TaskStateMachine
 
-    from treadmillio.taskstatemachine import TaskStateMachine
+        # BUG: Should check to make sure states are all connected properly?
+        StateMachine = stack.enter_context(TaskStateMachine(Config['StateMachine'], Interface, SoundController))
+    else:
+        StateMachine = None
 
-    # BUG: Should check to make sure states are all connected properly?
-    StateMachine = stack.enter_context(TaskStateMachine(Config['StateMachine'], Interface, SoundController))
+    # ------------------- Read in VR Reward Zones. ------------------------------------------------------------------
+    if 'RewardZones' in Config:
+        from treadmillio.rewardzone import RewardZoneController
+
+        RewardZones = RewardZoneController(Config['RewardZones'], Interface, SoundController)
+
+    else:
+        RewardZones = None
 
     # -------------------------- Start logging and stimulus connection -------------------------------------
     log_file = stack.enter_context(open(log_filename, 'w', newline=''))
@@ -125,14 +155,20 @@ with ExitStack() as stack:
     ##### Logging is actually CSV format
     writer = csv.writer(log_file)
 
+    Profiling = True
+    if Profiling:
+        execution_log = stack.enter_context(open('execution.csv', 'w', newline=''))
+        execution_writer = csv.writer(execution_log)
     # ----------------- Initialization
 
     ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
     Interface.connect()
 
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+    initialUnwrappedencoder = UnwrappedEncoder
 
-    StateMachine.start(MasterTime)
+    if StateMachine:
+        StateMachine.start(MasterTime)
 
     while(True):
         ## every 2 ms happens:
@@ -145,14 +181,28 @@ with ExitStack() as stack:
         if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
             print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}')
 
-        # -------------------- StateMachine -------------------- 
+        # -------------------- Updates -------------------- 
+        Interface.update_pulses(MasterTime) # lower any outstanding GPIO pulses
 
-        StateMachine.update_statemachine(MasterTime, Interface, SoundController, writer.writerow)
+        if SoundController:
+            SoundController.update_beeps(MasterTime) # stop any outstanding beeps
 
-        Interface.update_pulses(MasterTime)
+        if StateMachine:
+            StateMachine.update_statemachine(MasterTime, writer.writerow) # update the state machine
 
-        if EnableSound:
-            SoundController.update_beeps(MasterTime)
+        unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
+        pos = unwrapped_pos % virtual_track_length
+
+        if SoundController:
+            SoundController.update_localized(pos) # update VR-position-dependent sounds
+
+        if RewardZones:
+            RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
+
+        if Profiling:
+            exec_time = time.monotonic() - last_ts
+            execution_writer.writerow([exec_time])
+
 
 
 

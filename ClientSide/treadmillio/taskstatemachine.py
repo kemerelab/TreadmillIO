@@ -2,12 +2,18 @@ import time
 import numpy as np
 from itertools import cycle
 import warnings
+import zmq
+
 
 class TaskState:
     def __init__(self, currentStateLabel, nextStateLabel):
         self.Type = None
         self.NextState = nextStateLabel
         self.Label = currentStateLabel
+
+    def execute():
+        pass
+
 
 class DelayState(TaskState):
     def __init__(self, currentStateLabel, nextStateLabel, Params):
@@ -18,18 +24,19 @@ class DelayState(TaskState):
             self.rate = Params['Rate']
             self.delay_min = Params['Min']
             self.delay_max = Params['Max']
-            
-            delays = np.random.exponential(self.rate,size=(50,))
+
+            delays = np.random.exponential(self.rate, size=(50,))
             delays += self.delay_min
             delays[delays > self.delay_max] = self.delay_max
             self.delays = np.rint(delays).astype('int').tolist()
         elif (Params['Duration'] == 'Fixed'):
             self.delays = [Params['Value']]
         else:
-            raise(NotImplementedError("Random durations other than exponential not yet implemented"))
+            raise(NotImplementedError(
+                "Random durations other than exponential not yet implemented"))
 
         self.DelayList = cycle(self.delays)
-        
+
     def getDelay(self):
         return next(self.DelayList)
 
@@ -51,159 +58,190 @@ class VisualizationState(TaskState):
                 self.command.append(stim['Command'])
                 self.command_probs.append(stim['Probability'])
             self.command_probs = [p / prob_total for p in self.command_probs]
-            self.command_choices = np.random.choice(range(len(self.command_probs)), 
-                    5000, True, self.command_probs)
+            self.command_choices = np.random.choice(range(len(self.command_probs)),
+                                                    5000, True, self.command_probs)
             self.CommandIndices = cycle(self.command_choices)
-    
+
     def getVisualizationCommand(self):
         if self.visType == 'Fixed':
             return self.command
         elif self.visType == 'Random':
             return self.command[next(self.CommandIndices)]
 
+
 class RewardState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, Params, serialInterface, beeps):
+    def __init__(self, currentStateLabel, nextStateLabel, params, io_interface, sound_controller):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'Reward'
 
-        self.serialInterface = serialInterface
+        print(sound_controller)
 
-        if Params['DispensePin'] not in serialInterface.GPIOs:
+        self.io_interface = io_interface
+
+        if params['DispensePin'] not in io_interface.GPIOs:
             raise ValueError('Dispense pin not in defined GPIO list')
-        if ('RewardSound' in Params) and (Params['RewardSound'] != 'None'):
-            if Params['RewardSound'] not in beeps:
+
+        if ('RewardSound' in params) and (params['RewardSound'] != 'None'):
+            if params['RewardSound'] not in sound_controller.Beeps:
                 raise ValueError('Reward sound not in defined Beeps list')
 
-        self.RewardPin = Params['DispensePin']
-        if 'PumpRunTime' in Params:
-            self.PulseLength = Params['PumpRunTime']
+        self.RewardPin = params['DispensePin']
+        if 'PumpRunTime' in params:
+            self.PulseLength = params['PumpRunTime']
         else:
-            self.PulseLength = 250 # ms
-        if 'RewardSound' in Params:
-            self.RewardSound = Params['RewardSound']
+            self.PulseLength = 250  # ms
+        if 'RewardSound' in params:
+            self.RewardSound = params['RewardSound']
         else:
             self.RewardSound = None
 
         self.EventTimer = 0
 
-    def startExecution(self):
-        self.serialInterface.raise_output(selfRewardPin)
-        if self.RewardSound:
-            Beeps[self.RewardSound].change_gain(stimulus['BaselineGain'])
-
-    def endExecution(self):
-        self.serialInterface.lower_output(self.RewardPin)
-        if self.RewardSound:
-            Beeps[self.RewardSound].change_gain(stimulus['BaselineGain'])
-
-
-
     def rewardValues(self):
         return self.RewardPin, self.PulseLength, self.RewardSound
 
+
 class SetGPIOState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, params, serial_interface):
+    def __init__(self, currentStateLabel, nextStateLabel, params, io_interface):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'SetGPIO'
 
-        if params['Pin'] not in serial_interface.GPIOs:
-            raise ValueError('GPIO pin not in defined GPIO list')
+        if (params['Pin'] not in io_interface.GPIOs) or (io_interface.GPIOs[params['Pin']]['Type'] != 'Output'):
+            raise ValueError('TaskState SetGPIO Pin not specified as a GPIO output.')
 
         self.Pin = params['Pin']
         self.Value = params['Value']
 
     def getPinValue(self):
         return self.Pin, self.Value
-
-
-def create_state_machine(config, serial_interface, beeps):
-    StateMachineDict = {}
-    FirstState = None
-
-    if not(serial_interface):
-        warnings.warn('StateMachine being created without GPIO (gpio_names is empty).',
-                       SyntaxWarning)
-
-
-    for state_name, state in config.items():
-        if 'FirstState' in state and state['FirstState']:
-            FirstState = state_name
-
-        if (state['Type'] == 'Delay'):
-            StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
-
-        elif (state['Type'] == 'SetGPIO'):
-            StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'], serial_interface)
-
-        elif (state['Type'] == 'Reward'):
-            StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'], 
-                                                       serial_interface, beeps)
-
-        elif (state['Type'] == 'Visualization'):
-            StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
-
-        else:
-            raise(NotImplementedError("State machine elements other than " 
-                    "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
-
-    if FirstState is None:
-        FirstState = list(StateMachineDict.keys())[0]
-        print('First state in state machine not defined. '
-            'Picking first state in list: {}'.format(FirstState))
-    else:
-        print('First state is {}'.format(FirstState))
-
-    return StateMachineDict, FirstState
-
+        
 
 class TaskStateMachine():
-  def __init__(self, config, serialInterface=None, auditoryStimuli=None):
-    
-    self.StateMachineDict = {}
-    self.FirstState = None
-    self.EnableSound = bool(auditoryStimuli) # test if empty
+    def __init__(self, config, io_interface=None, sound_controller=None):
 
-    if not(serialInterface):
-        warnings.warn('StateMachine being created without GPIO (gpio_names is empty).',
-                       SyntaxWarning)
+        self.zmq_context = None # keep track of whether we'll do comms
 
-    # ---------------- Process YAML config file / dictionary -------------------------------------------
-    for state_name, state in config.items():
-        if 'FirstState' in state and state['FirstState']:
-            FirstState = state_name
+        self.StateMachineDict = {}
+        self.FirstState = None
 
-        if (state['Type'] == 'Delay'):
-            self.StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
+        self.needs_zmq = False
 
-        elif (state['Type'] == 'SetGPIO'):
-            if state['Params']['Pin'] not in gpio_names:
-                raise ValueError('GPIO pin not in defined GPIO list')
-            self.StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'])
-
-        elif (state['Type'] == 'Reward'):
-            self.StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
-
-        elif (state['Type'] == 'Visualization'):
-            self.StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
-
+        if not(io_interface):
+            self.io_interface = None
+            warnings.warn('StateMachine being created without GPIO (no io_interface specified).',
+                          SyntaxWarning)
         else:
-            raise(NotImplementedError("State machine elements other than " 
-                    "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
-
-    if FirstState is None:
-        FirstState = list(StateMachineDict.keys())[0]
-        print('First state in state machine not defined. '
-            'Picking first state in list: {}'.format(FirstState))
-    else:
-        print('First state is {}'.format(FirstState))
-
-    
-    self.RewardPumpEndTime = 0
-    self.RewardPumpActive = False
-
-    self.StateMachineWaiting = False
-    self.StateMachineWaitEndTime = 0
+            self.io_interface = io_interface
 
 
+        if not(sound_controller):
+            self.sound_controller = None
+            warnings.warn('StateMachine being created without GPIO (no SoundController specified).',
+                          SyntaxWarning)
+        else:
+            self.sound_controller = sound_controller
 
+        # ---------------- Process YAML config file / dictionary -------------------------------------------
+        for state_name, state in config['States'].items():
+            if 'FirstState' in state and state['FirstState']:
+                self.FirstState = state_name
+
+            if (state['Type'] == 'Delay'):
+                self.StateMachineDict[state_name] = DelayState(
+                    state_name, state['NextState'], state['Params'])
+
+            elif (state['Type'] == 'SetGPIO'):
+                self.StateMachineDict[state_name] = SetGPIOState(
+                    state_name, state['NextState'], state['Params'], io_interface)
+
+            elif (state['Type'] == 'Reward'):
+                print(sound_controller)
+                self.StateMachineDict[state_name] = RewardState(
+                    state_name, state['NextState'], state['Params'], io_interface, sound_controller)
+
+            elif (state['Type'] == 'Visualization'):
+                self.StateMachineDict[state_name] = VisualizationState(
+                    state_name, state['NextState'], state['Params'])
+                self.needs_zmq = True
+
+            else:
+                raise(NotImplementedError("State machine elements other than "
+                                          "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
+
+        if self.FirstState is None:
+            self.FirstState = list(self.StateMachineDict.keys())[0]
+            print('First state in state machine not defined. '
+                  'Picking first state in list: {}'.format(self.FirstState))
+        else:
+            print('First state is {}'.format(self.FirstState))
+
+        self.StateMachineWaiting = False
+        self.StateMachineWaitEndTime = 0
+
+        self.CurrentState = self.StateMachineDict[self.FirstState]
+
+
+        if self.needs_zmq:
+            self.zmq_context = zmq.Context()
+            if 'VisualCommsPort' in config:
+                self.port = str(config['VisualCommsPort'])
+            else:
+                self.port = "5556"
+
+
+    def __enter__(self):
+        self.socket = self.zmq_context.socket(zmq.PAIR)
+        self.socket.connect("tcp://localhost:%s" % self.port)
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        self.socket.close()
+
+    def start(self, time):
+        if (self.CurrentState.Type == 'Delay'):
+            self.StateMachineWaitEndTime = time + self.CurrentState.getDelay()
+            self.StateMachineWaiting = True
+
+
+    def update_statemachine(self, time, logger=None):
+        if self.StateMachineWaiting:  # Currently in a `Delay` or other state in which we shouldn't transition yet
+            if time > self.StateMachineWaitEndTime:
+                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+                self.StateMachineWaiting = False
+            else:
+                pass
+        else:
+            if self.CurrentState.Type == 'Delay':
+                delay = self.CurrentState.getDelay()
+                self.StateMachineWaitEndTime = time + delay
+                self.StateMachineWaiting = True
+                if logger:
+                    logger([time,-1,-1,-1,-1,'Delay', delay])
+
+            elif self.CurrentState.Type == 'SetGPIO':
+                pin, level = self.CurrentState.getPinValue()
+                if level:
+                    self.io_interface.raise_output(pin)
+                else:
+                    self.io_interface.lower_output(pin)
+                if logger:
+                    logger([time,-1,-1,-1,-1,'SetGPIO', pin, level])
+                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+
+            elif self.CurrentState.Type == 'Reward':
+                pin, duration, beep_name = self.CurrentState.rewardValues()
+                self.io_interface.pulse_output(pin, time + duration)
+                print('Reward!')
+                if self.sound_controller:
+                    self.sound_controller.Beeps[beep_name].play(time)
+                if logger:
+                    logger([time,-1,-1,-1,-1,'Reward', pin, duration])
+                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+
+            elif self.CurrentState.Type == 'Visualization':
+                command = self.CurrentState.getVisualizationCommand()
+                if logger:
+                    logger([time,-1,-1,-1,-1,'Visualization', command])
+                self.socket.send_string(command)
+                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 

@@ -5,6 +5,7 @@ import warnings
 
 class SerialInterface():
     def __init__(self, SerialPort='/dev/ttyS0', version=2, config=None):
+        self.serial = None
         self.version = version
         self.serialPort = SerialPort
 
@@ -22,6 +23,13 @@ class SerialInterface():
             for gpio_label, gpio_config in config.items():
                 self.add_gpio(gpio_label, gpio_config)
 
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        if (self.serial):
+            self.serial.close()
 
     def connect(self):
         print('Connecting to serial/USB interface {} and synchronizing.'.format(self.serialPort))
@@ -152,6 +160,10 @@ class SerialInterface():
 
     def raise_output(self, GPIO):
         pin = self.GPIOs[GPIO]['Number']
+        if self.GPIOs[GPIO]['IsPulsed']:
+            warnings.warn("GPIO pulse raised when already in a pulse.", UserWarning)
+        self.GPIOs[GPIO]['IsPulsed'] = False
+
         if (self.version == 1):
             data = (self.GPIO_state[0] | (0x1 << pin)).to_bytes(1, byteorder='big',signed=True)
             self.GPIO_state = data
@@ -162,6 +174,7 @@ class SerialInterface():
 
     def lower_output(self, GPIO):
         pin = self.GPIOs[GPIO]['Number']
+        self.GPIOs[GPIO]['IsPulsed'] = False
         if (self.version == 1):
             data = (self.GPIO_state[0] & ~(0x1 << pin)).to_bytes(1, byteorder='big',signed=True)
             self.GPIO_state = data
@@ -213,7 +226,7 @@ class SerialInterface():
         self.GPIOs[name]['IsPulsed'] = False
         self.GPIOs[name]['PulseOffTime'] = -1
 
-    def process_pulses(self, time):
+    def update_pulses(self, time):
         for gpio_name, gpio in self.GPIOs.items():
             if gpio['IsPulsed']:
                 if (time > gpio['PulseOffTime']):
@@ -224,11 +237,9 @@ class SerialInterface():
         #       will cause the pulse_duration to be updated
         #       Calling raise_output or lower_output on this GPIO subsequently
         #       will cause the pulse to be cancelled.
-        if (not self.GPIOs[GPIO]['IsPulsed']):
-            self.raise_output(GPIO)
-            self.GPIOs[GPIO]['IsPulsed'] = True
-            self.GPIOs[GPIO]['PulseOffTime'] = off_time
-        else:
-            self.GPIOs[GPIO]['PulseOffTime'] = off_time
+        self.raise_output(GPIO)
+        if (self.GPIOs[GPIO]['IsPulsed']):
             warnings.warn("GPIO pulse instructed when already in a pulse.", UserWarning)
+        self.GPIOs[GPIO]['IsPulsed'] = True
+        self.GPIOs[GPIO]['PulseOffTime'] = off_time
         
