@@ -42,18 +42,18 @@ class DelayState(TaskState):
 
 
 class VisualizationState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, Params):
+    def __init__(self, currentStateLabel, nextStateLabel, params):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'Visualization'
 
-        self.visType = Params['VisType']
+        self.visType = params['VisType']
         if self.visType == 'Fixed':
-            self.command = Params['Command']
+            self.command = params['Command']
         elif self.visType == 'Random':
             self.command = []
             self.command_probs = []
             prob_total = 0
-            for stim_name, stim in Params['Options'].items():
+            for stim_name, stim in params['Options'].items():
                 prob_total += stim['Probability']
                 self.command.append(stim['Command'])
                 self.command_probs.append(stim['Probability'])
@@ -62,11 +62,17 @@ class VisualizationState(TaskState):
                                                     5000, True, self.command_probs)
             self.CommandIndices = cycle(self.command_choices)
 
+        #TODO: Validate that server is online
+
     def getVisualizationCommand(self):
         if self.visType == 'Fixed':
-            return self.command
+            command = self.command
         elif self.visType == 'Random':
-            return self.command[next(self.CommandIndices)]
+            command = self.command[next(self.CommandIndices)]
+
+        return command
+
+
 
 
 class RewardState(TaskState):
@@ -80,23 +86,29 @@ class RewardState(TaskState):
             raise ValueError('Dispense pin not in defined GPIO list')
 
         if ('RewardSound' in params) and (params['RewardSound'] != 'None'):
-            if params['RewardSound'] not in sound_controller.Beeps:
+            if not sound_controller:
+                warnings.warn("RewardState won't produce sound b/c sound is not enabled.", RuntimeWarning)
+                self.RewardSound = None
+            elif params['RewardSound'] not in sound_controller.Beeps:
                 raise ValueError('Reward sound not in defined Beeps list')
-
-        self.RewardPin = params['DispensePin']
-        if 'PumpRunTime' in params:
-            self.PulseLength = params['PumpRunTime']
-        else:
-            self.PulseLength = 250  # ms
-        if 'RewardSound' in params:
-            self.RewardSound = params['RewardSound']
+            else:
+                self.sound_controller = sound_controller
+                self.RewardSound = sound_controller.Beeps[params['RewardSound']]
         else:
             self.RewardSound = None
 
-        self.EventTimer = 0
+        self.pin = params['DispensePin']
+        if 'PumpRunTime' in params:
+            self.duration = params['PumpRunTime']
+        else:
+            self.duration = 250  # ms
 
-    def rewardValues(self):
-        return self.RewardPin, self.PulseLength, self.RewardSound
+    def triggerReward(self, time):
+        self.io_interface.pulse_output(self.pin, time + self.duration)
+        print('Reward!')
+        if self.RewardSound:
+            self.RewardSound.play(time)
+        return self.pin, self.duration
 
 
 class SetGPIOState(TaskState):
@@ -107,38 +119,46 @@ class SetGPIOState(TaskState):
         if (params['Pin'] not in io_interface.GPIOs) or (io_interface.GPIOs[params['Pin']]['Type'] != 'Output'):
             raise ValueError('TaskState SetGPIO Pin not specified as a GPIO output.')
 
-        self.Pin = params['Pin']
-        self.Value = params['Value']
+        self.pin = params['Pin']
+        self.level = params['Value']
+        self.io_interface = io_interface
 
-    def getPinValue(self):
-        return self.Pin, self.Value
+    def setGPIO(self):
+        if self.level:
+            self.io_interface.raise_output(self.pin)
+        else:
+            self.io_interface.lower_output(self.pin)
+
+        return self.pin, self.level
 
 class SetSoundStimulusState(TaskState):
     def __init__(self, currentStateLabel, nextStateLabel, params, sound_controller):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'SetSoundState'
 
-        self.sound_controller = sound_controller
-
         if ('Sound' not in params) or ('Value' not in params):
             raise(ValueError("SetSoundStimulusState needs a 'Sound' and a 'Value'."))
-        
-        if params['Sound'] not in sound_controller.BackgroundSounds:
-                raise(ValueError('SetSoundStimulusState sound not found in Background sounds list'))
 
-        self.Sound = params['Sound']
         if  params['Value'] not in ['On','Off']:
             raise(ValueError("SetSoundStimulusState 'Value' must be 'On' or 'Off'"))
+
         self.Value = params['Value']
-        if self.Value == 'On':
-            self.gain = sound_controller.BackgroundSounds[params['Sound']].background_gain
-        elif self.Value == 'Off':
-            self.gain = sound_controller.BackgroundSounds[params['Sound']].off_gain
+        
+        if sound_controller:
+            if params['Sound'] not in sound_controller.BackgroundSounds:
+                    raise(ValueError('SetSoundStimulusState: "{}" not found in Background sounds list.'.format(params['Sound'])))
+            self.Sound = sound_controller.BackgroundSounds[params['Sound']]
+            if self.Value == 'On':
+                self.gain = self.Sound.baseline_gain
+            elif self.Value == 'Off':
+                self.gain = self.Sound.off_gain
+        else:
+            warnings.warn("SetSoundStimulusState won't produce sound bc sound is not enabled.", RuntimeWarning)
+            self.Sound = None
 
-
-    def set_gain():
-        if self.sound_controller:
-            self.sound_controller.BackgroundSounds[self.Sound].change_gain(self.gain)
+    def set_gain(self):
+        if self.Sound:
+            self.Sound.change_gain(self.gain)
 
 
 class TaskStateMachine():
@@ -150,19 +170,20 @@ class TaskStateMachine():
         self.FirstState = None
 
         self.needs_zmq = False
+        self.socket = None
 
         if not(io_interface):
             self.io_interface = None
             warnings.warn('StateMachine being created without GPIO (no io_interface specified).',
-                          SyntaxWarning)
+                          RuntimeWarning)
         else:
             self.io_interface = io_interface
 
 
         if not(sound_controller):
             self.sound_controller = None
-            warnings.warn('StateMachine being created without GPIO (no SoundController specified).',
-                          SyntaxWarning)
+            warnings.warn('StateMachine being created without sound (no SoundController specified).',
+                          RuntimeWarning)
         else:
             self.sound_controller = sound_controller
 
@@ -184,7 +205,6 @@ class TaskStateMachine():
                     state_name, state['NextState'], state['Params'], sound_controller)
 
             elif (state['Type'] == 'Reward'):
-                print(sound_controller)
                 self.StateMachineDict[state_name] = RewardState(
                     state_name, state['NextState'], state['Params'], io_interface, sound_controller)
 
@@ -219,12 +239,14 @@ class TaskStateMachine():
 
 
     def __enter__(self):
-        self.socket = self.zmq_context.socket(zmq.PAIR)
-        self.socket.connect("tcp://localhost:%s" % self.port)
+        if self.needs_zmq:
+            self.socket = self.zmq_context.socket(zmq.PAIR)
+            self.socket.connect("tcp://localhost:%s" % self.port)
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.socket.close()
+        if self.socket:
+            self.socket.close()
 
     def start(self, time):
         if (self.CurrentState.Type == 'Delay'):
@@ -248,11 +270,7 @@ class TaskStateMachine():
                     logger([time,-1,-1,-1,-1,'Delay', delay])
 
             elif self.CurrentState.Type == 'SetGPIO':
-                pin, level = self.CurrentState.getPinValue()
-                if level:
-                    self.io_interface.raise_output(pin)
-                else:
-                    self.io_interface.lower_output(pin)
+                pin, level = self.CurrentState.setGPIO()
                 if logger:
                     logger([time,-1,-1,-1,-1,'SetGPIO', pin, level])
                 self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
@@ -262,23 +280,20 @@ class TaskStateMachine():
                     self.CurrentState.set_gain()
                 if logger:
                     # TODO: log which sound and which level!
-                    logger([time,-1,-1,-1,-1,'SetSoundState')
+                    logger([time,-1,-1,-1,-1,'SetSoundState'])
                 self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 
             elif self.CurrentState.Type == 'Reward':
-                pin, duration, beep_name = self.CurrentState.rewardValues()
-                self.io_interface.pulse_output(pin, time + duration)
-                print('Reward!')
-                if self.sound_controller:
-                    self.sound_controller.Beeps[beep_name].play(time)
+                pin, duration = self.CurrentState.triggerReward(time)
                 if logger:
                     logger([time,-1,-1,-1,-1,'Reward', pin, duration])
                 self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 
             elif self.CurrentState.Type == 'Visualization':
                 command = self.CurrentState.getVisualizationCommand()
+                self.socket.send_string(command)
+
                 if logger:
                     logger([time,-1,-1,-1,-1,'Visualization', command])
-                self.socket.send_string(command)
                 self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 

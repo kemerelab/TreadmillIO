@@ -31,7 +31,7 @@ StateMachine:
       Type: 'SetSoundState'
       Params:
         Value: 'On'
-        Sound: 'PinknNoise'
+        Sound: 'PinkNoise'
       NextState: 'Pause1'
     Pause1:
       Type: 'Delay'
@@ -44,7 +44,7 @@ StateMachine:
         NextState: 'Pause2'
         Params:
           RewardSound: 'RewardSound1' # The name of the auditory stimulus (of type "Beep") which should be played 
-          DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
+          DispensePin: 'Reward1' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
           PumpRunTime: 300 # How long to run the reward pump for. Note that the Beep duration is specified in its config
     Pause2:
       Type: 'Delay'
@@ -56,20 +56,20 @@ StateMachine:
       Type: 'SetSoundState'
       Params:
         Value: 'Off'
-        Sound: 'PinknNoise'
+        Sound: 'PinkNoise'
       NextState: 'Pause3'
     Pause3:
       Type: 'Delay'
       Params:
         Duration: 'Fixed'
         Value: 1000
-      NextState: 'Reward3'
+      NextState: 'Reward2'
     Reward2:
         Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
         NextState: 'Pause4'
         Params:
           RewardSound: 'RewardSound2' # The name of the auditory stimulus (of type "Beep") which should be played 
-          DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
+          DispensePin: 'Reward2' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
           PumpRunTime: 300 # How long to run the reward pump for. Note that the Beep duration is specified in its config
     Pause4:
       Type: 'Delay'
@@ -85,7 +85,7 @@ AuditoryStimuli:
       MinimixInputPort: 1 # jackminimix channel to use. By default, these will be auto-assigned if not specified
       MinimixChannel: 'left' # stereo audio channel whose volume should be controlled for this stimulus
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
-      BaselineGain: 0.0
+      BaselineGain: -3.0
       Filename: 'pink_noise.wav'
       Color: 'pink' # Matplotlib color name used for visualization system
     RewardSound1:

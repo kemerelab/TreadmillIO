@@ -7,7 +7,6 @@ Info: # "Info" configuration options can be overridden by command line options
 Preferences:
   HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
-  VisualCommsPort: 5556
   LogCommands: True
 
 
@@ -63,44 +62,47 @@ Maze:
   Length: 100.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
 
 StateMachine:
-  BlankScreen:
-    Type: 'Visualization'
-    Params:
-      VisType: 'Fixed'
-      Command: 'GREY'
-    NextState: 'Intertrial'
-  Intertrial:
-    Type: 'Delay'
-    Params:
-      Duration: 'Fixed'
-      Value: 5000
-    NextState: 'StimulusPresentation'
-  StimulusPresentation:
-    FirstState: True
-    Type: 'Visualization'
-    Params:
-      VisType: 'Random'
-      Options:
-        Right:
-          Command: 'RIGHT'
-          Probability: 1
-        Left:
-          Command: 'LEFT'
-          Probability: 1
-    NextState: 'StimulusPresentationDelay'
-  StimulusPresentationDelay:
-    Type: 'Delay'
-    Params:
-      Duration: 'Exponential'
-      Rate: 1000
-      Min: 2000
-      Max: 4000
-    NextState: 'Reward'
-  Reward:
-      Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
-      NextState: 'BlankScreen'
+  VisualCommsPort: 5556
+
+  States:
+    BlankScreen:
+      Type: 'Visualization'
       Params:
-        DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
-        PumpRunTime: 100 # How long to run the reward pump for. Note that this is also the duration
-                          # of time that any associated Beep will be played.
+        VisType: 'Fixed'
+        Command: 'GREY'
+      NextState: 'Intertrial'
+    Intertrial:
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 5000
+      NextState: 'StimulusPresentation'
+    StimulusPresentation:
+      FirstState: True
+      Type: 'Visualization'
+      Params:
+        VisType: 'Random'
+        Options:
+          Right:
+            Command: 'RIGHT'
+            Probability: 1
+          Left:
+            Command: 'LEFT'
+            Probability: 1
+      NextState: 'StimulusPresentationDelay'
+    StimulusPresentationDelay:
+      Type: 'Delay'
+      Params:
+        Duration: 'Exponential'
+        Rate: 1000
+        Min: 2000
+        Max: 4000
+      NextState: 'Reward'
+    Reward:
+        Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
+        NextState: 'BlankScreen'
+        Params:
+          DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
+          PumpRunTime: 100 # How long to run the reward pump for. Note that this is also the duration
+                            # of time that any associated Beep will be played.
 

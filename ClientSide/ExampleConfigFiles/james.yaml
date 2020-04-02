@@ -1,0 +1,115 @@
+Info: # "Info" configuration options can be overridden by command line options
+  MouseID: V1A1 # Used to name saved data file
+  Note: '' # Added in a block at the start of saved data file
+  Session: '' # This is added to default (date and time)
+  TaskType: Moana Classical Conditioning
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: True
+
+GPIO: # A list of GPIO pins used in the task
+  Reward1:
+    Number: 1
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  Reward2:
+    Number: 2
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  Poke1:
+    Number: 3
+    Type: 'Input'
+  Poke2:
+    Number: 4
+    Type: 'Input'
+  Lick1:
+    Number: 5
+    Type: 'Input'
+  Lick2:
+    Number: 6
+    Type: 'Input'
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    Interpatch:
+      Type: 'SetSoundState'
+      Params:
+        Value: 'On'
+        Sound: 'InterPatch'
+      NextState: 'InterPatch'
+      ConditionalNextState:
+        Type: 'GPIO'
+        Pin: 'Poke1'
+        ConditionValue: 'On' # Not sure about this syntax
+        NextState: 'InPatch1Transition'
+      ConditionalNextState:
+        Type: 'GPIO'
+        Pin: 'Poke2'
+        ConditionValue: 'On' # Not sure about this syntax
+        NextState: 'InPatch2'
+    InPatch1Transition:
+      Type: 'SetInternalState'
+      Params:
+        State: 'InterRewardDelay1'
+        InternalState: 'Value'
+        NewValue: 100
+      NextState: 'InPatch1'
+    InPatch1:
+      Type: 'SetSoundState'
+      Params:
+        Value: 'On'
+        Sound: 'InPatch'
+      NextState: 'InterRewardDelay1'
+      ConditionalNextState:
+        Type: 'GPIO'
+        Pin: 'Poke1'
+        ConditionValue: 'Off' # Not sure about this syntax
+        NextState: 'InterPatch'
+    InterRewardDelay1:
+      Type: 'Delay'
+      Params:
+        Duration: 'Depleting'
+        Value: 100 # should get larger
+    Reward1:
+      Type: 'OperantReward'
+      NextState: 'Reward1'  # Loops back on itself
+      Params:
+        Sound: 'RewardSound'
+        LickPin: 'Lick1'
+        DispensePin: 'Reward1'
+        PumpRunTime: 250 # ms
+      ConditionalNextState:
+        Type: 'GPIO'
+        Pin: 'Poke1'
+        ConditionValue: 'Off' # Not sure about this syntax
+        NextState: 'InterPatch'
+
+
+AuditoryStimuli:
+  AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
+  StimuliList:
+    InterpatchSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      BaselineGain: 0.0
+      Filename: 'pink_noise.wav'
+      Color: 'pink' # Matplotlib color name used for visualization system
+    InPatchSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      BaselineGain: 0.0
+      Filename: 'tone_cloud.wav'
+      Color: 'pink' # Matplotlib color name used for visualization system
+    RewardSound:
+      Type: 'Beep'
+      Filename: 'tone_3kHz.wav'
+      BaselineGain: 0.0
+      Duration: 250 # ms
+
+

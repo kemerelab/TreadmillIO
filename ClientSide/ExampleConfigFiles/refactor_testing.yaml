@@ -66,50 +66,50 @@ Maze:
   TrackTransform: None # Not currently implemented.
 
 
-# StateMachine:
-#   VisualCommsPort: 5556
+StateMachine:
+  VisualCommsPort: 5556
 
-#   States:
-#     BlankScreen:
-#       Type: 'Visualization'
-#       Params:
-#         VisType: 'Fixed'
-#         Command: 'GREY'
-#       NextState: 'Intertrial'
-#     Intertrial:
-#       Type: 'Delay'
-#       Params:
-#         Duration: 'Fixed'
-#         Value: 5000
-#       NextState: 'StimulusPresentation'
-#     StimulusPresentation:
-#       FirstState: True
-#       Type: 'Visualization'
-#       Params:
-#         VisType: 'Random'
-#         Options:
-#           Right:
-#             Command: 'RIGHT'
-#             Probability: 1
-#           Left:
-#             Command: 'LEFT'
-#             Probability: 1
-#       NextState: 'StimulusPresentationDelay'
-#     StimulusPresentationDelay:
-#       Type: 'Delay'
-#       Params:
-#         Duration: 'Exponential'
-#         Rate: 1000
-#         Min: 2000
-#         Max: 4000
-#       NextState: 'Reward'
-#     Reward:
-#         Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
-#         NextState: 'BlankScreen'
-#         Params:
-#           RewardSound: 'RewardSound' # The name of the auditory stimulus (of type "Beep") which should be played 
-#           DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
-#           PumpRunTime: 300 # How long to run the reward pump for. Note that the Beep duration is specified in its config
+  States:
+    BlankScreen:
+      Type: 'Visualization'
+      Params:
+        VisType: 'Fixed'
+        Command: 'GREY'
+      NextState: 'Intertrial'
+    Intertrial:
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 5000
+      NextState: 'StimulusPresentation'
+    StimulusPresentation:
+      FirstState: True
+      Type: 'Visualization'
+      Params:
+        VisType: 'Random'
+        Options:
+          Right:
+            Command: 'RIGHT'
+            Probability: 1
+          Left:
+            Command: 'LEFT'
+            Probability: 1
+      NextState: 'StimulusPresentationDelay'
+    StimulusPresentationDelay:
+      Type: 'Delay'
+      Params:
+        Duration: 'Exponential'
+        Rate: 1000
+        Min: 2000
+        Max: 4000
+      NextState: 'Reward'
+    Reward:
+        Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
+        NextState: 'BlankScreen'
+        Params:
+          RewardSound: 'RewardSound' # The name of the auditory stimulus (of type "Beep") which should be played 
+          DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
+          PumpRunTime: 300 # How long to run the reward pump for. Note that the Beep duration is specified in its config
 
 AuditoryStimuli:
   AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds'

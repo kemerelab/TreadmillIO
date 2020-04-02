@@ -3,6 +3,7 @@ from subprocess import Popen, DEVNULL
 import jack # pip install JACK-client
 from oscpy.client import OSCClient
 import os
+import warnings
 
 
 @jack.set_error_function
@@ -79,17 +80,19 @@ class SoundStimulusController():
         else:
             file_root = None
 
-        print('Normalizing stimuli:')
         StimuliList = sound_config['StimuliList']
-        for stimulus_name, stimulus in StimuliList.items(): 
-            print(' - ',stimulus_name)
-            for key, config_item in sound_config['Defaults'].items():
-                if key not in stimulus:
-                    stimulus[key] = config_item
-                elif isinstance(config_item, dict):
-                    for subkey, sub_config_item in config_item.items():
-                        if subkey not in stimulus[key]:
-                            stimulus[key][subkey] = sub_config_item
+
+        if 'Defaults' in sound_config:
+            print('SoundStimulus: setting defaults.')
+            for stimulus_name, stimulus in StimuliList.items(): 
+                print(' - ',stimulus_name)
+                for key, config_item in sound_config['Defaults'].items():
+                    if key not in stimulus:
+                        stimulus[key] = config_item
+                    elif isinstance(config_item, dict):
+                        for subkey, sub_config_item in config_item.items():
+                            if subkey not in stimulus[key]:
+                                stimulus[key][subkey] = sub_config_item
 
         for stimulus_name, stimulus in StimuliList.items():
             if stimulus['Type'] == 'Background':
@@ -99,7 +102,7 @@ class SoundStimulusController():
                 self.Beeps[stimulus_name] = BeepSound(stimulus, file_root, osc_port, verbose)
             elif stimulus['Type'] == 'Localized':
                 if not track_length:
-                    raise(ValueError('Illegal to define a "Localized" sound without defining the Maze->Length.'))
+                    raise(ValueError('SoundStimulus: Illegal to define a "Localized" sound without defining the Maze->Length.'))
                 # visualization.add_zone_position(stimulus['CenterPosition'] - stimulus['Modulation']['Width']/2, 
                 #                     stimulus['CenterPosition'] + stimulus['Modulation']['Width']/2, 
                 #                     fillcolor=stimulus['Color'])
@@ -107,8 +110,6 @@ class SoundStimulusController():
 
             time.sleep(0.25)
         
-        print('leaving init')
-
     def update_beeps(self, time):
         for _, beep in self.Beeps.items():
                 beep.update(time)
@@ -140,6 +141,17 @@ class SoundStimulusController():
 
 class SoundStimulus():
     def __init__(self, stimulus_params, file_root, osc_port, verbose):
+        if 'BaselineGain' in stimulus_params:
+            self.baseline_gain = stimulus_params['BaselineGain']
+        else:
+            warnings.warn("SoundStimulus using default 'BaselineGain' of 0.0 dB.", RuntimeWarning)
+            self.baseline_gain = 0.0
+        
+        if 'OffGain' in stimulus_params:
+            self.off_gain = stimulus_params['OffGain']
+        else:
+            self.off_gain = -90.0 
+
         self.p_jackplay = None
 
         jack_client = jack.Client('PythonJackClient', no_start_server=True)
@@ -150,7 +162,8 @@ class SoundStimulus():
         if not os.path.isfile(filename):
             raise(ValueError("Sound file {} could not be found.".format(filename)))
         else:
-            print('Loading: {}'.format(filename))
+            if verbose > 1:
+                print('Loading: {}'.format(filename))
 
         if 'MinimixChannel' in stimulus_params:
             channel = stimulus_params['MinimixChannel'].lower()
@@ -184,12 +197,14 @@ class SoundStimulus():
         if not jack_client.get_ports(portName):
             raise(EnvironmentError("Not enough minimixer ports. Restart with 'MaximumNumberOfStimuli' of at least {}".format(inputPort)))
         else:
-            print('Input port: {}'.format(self.inputPort))
+            if (verbose > 1):
+                print('Input port: {}'.format(self.inputPort))
 
         jack_client.close()
 
         jackplay_cmd = ['/usr/local/bin/sndfile-jackplay', '-l0', '-a=minimixer:in{}_{}'.format(self.inputPort,channel), '{}'.format(filename)]
-        print(jackplay_cmd)
+        if (verbose > 1):
+            print(jackplay_cmd)
         
         if verbose > 2:
             self.p_jackplay = Popen(jackplay_cmd)
@@ -198,14 +213,10 @@ class SoundStimulus():
 
         time.sleep(0.25)
 
-        self.baseline_gain = stimulus_params['BaselineGain']
-        if 'OffGain' in stimulus_params:
-            self.off_gain = stimulus_params['OffGain']
-        else:
-            self.off_gain = -90.0 
+        
+        self.gain = self.baseline_gain
 
         self.oscC = OSCClient('127.0.0.1', int(osc_port))
-        self.gain = self.baseline_gain
         self.oscC.send_message(b'/mixer/channel/set_gain',[int(self.inputPort), self.gain])
 
 
@@ -226,11 +237,13 @@ class LocalizedSound(SoundStimulus):
     def __init__(self, track_length, stimulus_params, file_root, osc_port, verbose):
         SoundStimulus.__init__(self,stimulus_params, file_root, osc_port, verbose)
 
+        # TODO check that these are all set. I need to know my name in order to give
+        #  a meaningful warning, though.
         self.center = stimulus_params['CenterPosition']
         self.width = stimulus_params['Modulation']['Width']
         self.half = self.width/2
         self.trackLength = track_length
-        self.maxGain = stimulus_params['BaselineGain']
+        self.maxGain = self.baseline_gain
         self.minGain = stimulus_params['Modulation']['CutoffGain']
 
 
