@@ -125,26 +125,9 @@ void loop() {
     }
 
 
-/*    
-    if (MasterClock > NextClear) {
-        digitalWrite(LED0, 0);
-        digitalWrite(LED1, 0);
-        digitalWrite(LED2, 0);
-        digitalWrite(LED3, 0);
-        NextClear = MasterClock + 1000;
-    }
+    /* TODO: Add commands to Start and Stop streaming as well as
+             reporting configuration. */
 
-    if (MasterClock > NextUpdate) {
-        int BytesAvailable = Serial.available();
-        if (BytesAvailable > 0) {
-            digitalWrite(LED0, BytesAvailable & 0x01);
-            digitalWrite(LED1, BytesAvailable & 0x02);
-            digitalWrite(LED2, BytesAvailable & 0x04);
-            digitalWrite(LED3, BytesAvailable & 0x08);
-            NextUpdate = MasterClock + 1000;
-        }
-    }
-*/
 
     int SerialBufferFlushCounter = SERIAL_READS_BEFORE_LEAVING;
     uint8_t IncomingByte = '\0';
