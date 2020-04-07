@@ -4,12 +4,16 @@ from itertools import cycle
 import warnings
 import zmq
 
+import pygraphviz
 
 class TaskState:
     def __init__(self, currentStateLabel, nextStateLabel):
         self.Type = None
         self.NextState = nextStateLabel
-        self.Label = currentStateLabel
+        self.label = currentStateLabel
+
+    def get_graph_label(self):
+        return '<font point-size="18">{}: <b>{}</b></font>'.format(self.Type, self.label)
 
     def execute():
         pass
@@ -19,6 +23,7 @@ class DelayState(TaskState):
     def __init__(self, currentStateLabel, nextStateLabel, Params):
         TaskState.__init__(self, currentStateLabel, nextStateLabel)
         self.Type = 'Delay'
+        self.delay_type = Params['Duration']
 
         if (Params['Duration'] == 'Exponential'):
             self.rate = Params['Rate']
@@ -39,6 +44,18 @@ class DelayState(TaskState):
 
     def getDelay(self):
         return next(self.DelayList)
+
+    def get_graph_label(self):
+        label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
+        if self.delay_type == 'Fixed':
+            return label + '<tr><td>Fixed Delay: {} ms</td></tr></table>'.format(self.delays[0])
+        elif self.delay_type == 'Exponential':
+            return label + '<tr><td>Exponential Delay: <br/>' \
+                '&#955;={} ms (min: {}, max: {}) </td></tr></table>'.format(
+                        self.rate, self.delay_min, self.delay_max)
+        else:
+            return TaskState.get_graph_label(self)
+        
 
 
 class VisualizationState(TaskState):
@@ -71,6 +88,18 @@ class VisualizationState(TaskState):
             command = self.command[next(self.CommandIndices)]
 
         return command
+
+    def get_graph_label(self):
+        label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
+        if self.visType == 'Fixed':
+            return  label + \
+                '<tr><td>Sends viz-command: \"{}\"</td></tr></table>'.format(self.command)
+        elif self.visType == 'Random':
+            return label + '<tr><td>Sends viz-commands: {}<br/>' \
+                'with probs: {}</td></tr></table>'.format(
+                    self.command, str(self.command_probs))
+        else:
+            return TaskState.get_graph_label(self)
 
 
 
@@ -110,6 +139,15 @@ class RewardState(TaskState):
             self.RewardSound.play(time)
         return self.pin, self.duration
 
+    def get_graph_label(self):
+        label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
+        label += '<tr><td>Pulse [{}]({}) for {} ms</td></tr>'.format(
+            self.pin,self.io_interface.GPIOs[self.pin]['Number'],self.duration)
+        if self.RewardSound:
+            label += '<tr><td>Play {}</td></tr>'.format(self.RewardSound.filename)
+        label +='</table>'
+        return label
+
 
 class SetGPIOState(TaskState):
     def __init__(self, currentStateLabel, nextStateLabel, params, io_interface):
@@ -130,6 +168,14 @@ class SetGPIOState(TaskState):
             self.io_interface.lower_output(self.pin)
 
         return self.pin, self.level
+
+    def get_graph_label(self):
+        label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
+        label += '<tr><td>Set \"{}\"[{}] to {} </td></tr>'.format(self.pin, 
+            self.io_interface.GPIOs[self.pin]["Number"],self.level)
+        label +='</table>'
+        return label
+
 
 class SetSoundStimulusState(TaskState):
     def __init__(self, currentStateLabel, nextStateLabel, params, sound_controller):
@@ -159,6 +205,18 @@ class SetSoundStimulusState(TaskState):
     def set_gain(self):
         if self.Sound:
             self.Sound.change_gain(self.gain)
+
+    def get_graph_label(self):
+        label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
+        if self.Value == 'On':
+            label += '<tr><td>Play {}</td></tr>'.format(self.Sound.filename)
+        if self.Value == 'Off':
+            label += '<tr><td>Stop {}</td></tr>'.format(self.Sound.filename)
+        label +='</table>'
+        return label
+
+
+
 
 
 class TaskStateMachine():
@@ -297,3 +355,17 @@ class TaskStateMachine():
                     logger([time,-1,-1,-1,-1,'Visualization', command])
                 self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 
+
+    def render(self, filename):
+        G = pygraphviz.AGraph(directed=True, rankdir='LR', type='UTF-8')
+        for state_name, state in self.StateMachineDict.items():
+            G.add_node(state.label, label='<'+state.get_graph_label()+'>',shape='box')
+        for state_name, state in self.StateMachineDict.items():
+            G.add_edge(state.label, self.StateMachineDict[state.NextState].label)
+        
+        G.node_attr.update(fontname='helvetica', fontsize="10")
+        G.edge_attr.update(len=3)
+        G.layout('neato') # layout with default (neato)
+        G.draw(filename) # draw file
+        # G.write('test.dot') # useful for debugging
+        print('Drew Graph')

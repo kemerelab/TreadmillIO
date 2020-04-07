@@ -165,6 +165,8 @@ class SoundStimulus():
             if verbose > 1:
                 print('Loading: {}'.format(filename))
 
+        self.filename = filename
+
         if 'MinimixChannel' in stimulus_params:
             channel = stimulus_params['MinimixChannel'].lower()
             if channel not in ['left', 'right']:
