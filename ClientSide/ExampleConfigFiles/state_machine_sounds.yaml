@@ -19,8 +19,13 @@ GPIO: # A list of GPIO pins used in the task
   Reward2:
     Number: 2
     Type: 'Output'
-    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
-                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+    Mirror: True 
+
+  GPIOPin:
+    Number: 3
+    Type: 'Output'
+    Mirror: True
+
 
 Maze:
   Type: 'StateMachine' # VR or physical
@@ -57,6 +62,12 @@ StateMachine:
       Params:
         Value: 'Off'
         Sound: 'PinkNoise'
+      NextState: 'TestSetGPIO'
+    TestSetGPIO:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIOPin'
+        Value: True
       NextState: 'Pause3'
     Pause3:
       Type: 'Delay'
@@ -76,7 +87,14 @@ StateMachine:
       Params:
         Duration: 'Fixed'
         Value: 500
+      NextState: 'TestSetGPIO2'
+    TestSetGPIO2:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIOPin'
+        Value: False
       NextState: 'HighNoise'
+
 
 AuditoryStimuli:
   AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'

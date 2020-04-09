@@ -13,12 +13,18 @@ class SerialInterface():
 
         self.latency = 0
 
+        self.MasterTime = 0
+        self.Encoder = 0
+        self.UnwrappedEncoder = 0
+        self.GPIO = None
+        self.AuxGPIO = None
+
         if self.version == 1:
             self.GPIO_state = b'\x00'
         else:
             self.GPIO_state = int(0) # b'\x00'
             self.OutputPinMask = int(0)
-
+            
         if config is not None:
             for gpio_label, gpio_config in config.items():
                 self.add_gpio(gpio_label, gpio_config)
@@ -94,18 +100,21 @@ class SerialInterface():
         assert(len(x)==self.MessageLen)
 
         if (self.version==1):
-            StartChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO  = struct.unpack('<cBLhlBx', x)
+            StartChar, StructSize, self.MasterTime, self.Encoder, self.UnwrappedEncoder, \
+                    self.GPIO  = struct.unpack('<cBLhlBx', x)
             assert(StartChar == self.startChar)
-            return StartChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO
 
         elif (self.version==2):
-            StartChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO  = struct.unpack('<cBLhlHHx', x)
+            StartChar, StructSize, self.MasterTime, self.Encoder, self.UnwrappedEncoder, \
+                    self.GPIO, self.AuxGPIO  = struct.unpack('<cBLhlHHx', x)
             assert(StartChar == self.startChar)
-            self.GPIO_state = (self.GPIO_state & self.OutputPinMask) + (GPIO & ~self.OutputPinMask)
-            if (GPIO != self.GPIO_state):
+            self.GPIO_state = (self.GPIO_state & self.OutputPinMask) + (self.GPIO & ~self.OutputPinMask)
+            if (self.GPIO != self.GPIO_state):
                 self.latency = self.latency + 1
                 #print(f'Difference between expected and actual GPIO {self.GPIO_state:#0b} {GPIO:#0b}')
-            return StartChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO
+
+        # self.AuxGPIO will be None for version 1 interfaces
+        return StartChar, StructSize, self.MasterTime, self.Encoder, self.UnwrappedEncoder, self.GPIO, self.AuxGPIO
 
     def check_latency():
         latency = self.latency
@@ -226,10 +235,10 @@ class SerialInterface():
         self.GPIOs[name]['IsPulsed'] = False
         self.GPIOs[name]['PulseOffTime'] = -1
 
-    def update_pulses(self, time):
+    def update_pulses(self):
         for gpio_name, gpio in self.GPIOs.items():
             if gpio['IsPulsed']:
-                if (time > gpio['PulseOffTime']):
+                if (self.MasterTime > gpio['PulseOffTime']):
                     self.lower_output(gpio_name)
 
     def pulse_output(self, GPIO, off_time):

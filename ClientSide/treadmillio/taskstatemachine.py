@@ -6,24 +6,51 @@ import zmq
 
 import pygraphviz
 
+class StateTransitionCondition:
+    def __init__(self, label, state_config, io_interface):
+        self.label = label
+
+    def condition(self, io_interface):
+        # test if the condtion defined by this object is current true or false
+        pass
+
 class TaskState:
-    def __init__(self, currentStateLabel, nextStateLabel):
+    def __init__(self, label, state_config, io_interface):
         self.Type = None
-        self.NextState = nextStateLabel
-        self.label = currentStateLabel
+        self.label = label
+
+        print(state_config)
+
+        self.next_state = state_config['NextState']
+        self.io_interface = io_interface
+
+        # if not isinstance(Params['NextState'], list):
+        #     Params['NextState']
 
     def get_graph_label(self):
         return '<font point-size="18">{}: <b>{}</b></font>'.format(self.Type, self.label)
 
-    def execute():
+    def get_next_state(self, rendering=False):
+        return self.next_state
+
+    def on_entrance(self, logger=None):
+        pass
+
+    def on_exit(self, logger=None):
+        pass
+
+    def on_remain(self, logger=None):
         pass
 
 
 class DelayState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, Params):
-        TaskState.__init__(self, currentStateLabel, nextStateLabel)
+    def __init__(self, label, state_config, io_interface):
+        TaskState.__init__(self, label, state_config, io_interface)
         self.Type = 'Delay'
+        Params = state_config['Params']
         self.delay_type = Params['Duration']
+        self.delay_end = 0
+        self.is_waiting = False
 
         if (Params['Duration'] == 'Exponential'):
             self.rate = Params['Rate']
@@ -45,6 +72,30 @@ class DelayState(TaskState):
     def getDelay(self):
         return next(self.DelayList)
 
+    def on_entrance(self, logger=None):
+        if not self.is_waiting:
+            delay = next(self.DelayList)
+            time = self.io_interface.MasterTime
+            self.delay_end = time + delay
+            self.is_waiting = True
+        else:
+            pass
+    
+    def on_exit(self, logger=None):
+        self.is_waiting = False
+        self.delay_end = 0
+
+    def get_next_state(self, rendering=False):
+        if not rendering:
+            time = self.io_interface.MasterTime
+            if (time > self.delay_end):
+                return self.next_state
+            else:
+                return None
+        else:
+            return [(self.next_state, 'After delay'),
+                    (self.label, '')]
+
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
         if self.delay_type == 'Fixed':
@@ -59,9 +110,11 @@ class DelayState(TaskState):
 
 
 class VisualizationState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, params):
-        TaskState.__init__(self, currentStateLabel, nextStateLabel)
+    def __init__(self, label, state_config, io_interface):
+        TaskState.__init__(self, label, state_config, io_interface)
         self.Type = 'Visualization'
+        params = state_config['Params']
+
 
         self.visType = params['VisType']
         if self.visType == 'Fixed':
@@ -89,6 +142,17 @@ class VisualizationState(TaskState):
 
         return command
 
+    def on_entrance(self, socket, logger= None):
+        if self.visType == 'Fixed':
+            command = self.command
+        elif self.visType == 'Random':
+            command = self.command[next(self.CommandIndices)]
+        socket.send_string(command)
+
+        if logger:
+            logger([time,-1,-1,-1,-1,'Visualization', command])
+
+
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
         if self.visType == 'Fixed':
@@ -102,14 +166,11 @@ class VisualizationState(TaskState):
             return TaskState.get_graph_label(self)
 
 
-
-
 class RewardState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, params, io_interface, sound_controller):
-        TaskState.__init__(self, currentStateLabel, nextStateLabel)
+    def __init__(self, label, state_config, io_interface, sound_controller):
+        TaskState.__init__(self, label, state_config, io_interface)
         self.Type = 'Reward'
-
-        self.io_interface = io_interface
+        params = state_config['Params']
 
         if params['DispensePin'] not in io_interface.GPIOs:
             raise ValueError('Dispense pin not in defined GPIO list')
@@ -139,6 +200,16 @@ class RewardState(TaskState):
             self.RewardSound.play(time)
         return self.pin, self.duration
 
+    def on_entrance(self, logger=None):
+        time = self.io_interface.MasterTime
+        self.io_interface.pulse_output(self.pin, time + self.duration)
+        print('Reward!')
+        if self.RewardSound:
+            self.RewardSound.play(time)
+
+        if logger:
+            logger([time,-1,-1,-1,-1,'Reward', self.pin, self.duration])  
+
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
         label += '<tr><td>Pulse [{}]({}) for {} ms</td></tr>'.format(
@@ -150,16 +221,16 @@ class RewardState(TaskState):
 
 
 class SetGPIOState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, params, io_interface):
-        TaskState.__init__(self, currentStateLabel, nextStateLabel)
+    def __init__(self, label, state_config, io_interface):
+        TaskState.__init__(self, label, state_config, io_interface)
         self.Type = 'SetGPIO'
+        params = state_config['Params']
 
         if (params['Pin'] not in io_interface.GPIOs) or (io_interface.GPIOs[params['Pin']]['Type'] != 'Output'):
             raise ValueError('TaskState SetGPIO Pin not specified as a GPIO output.')
 
         self.pin = params['Pin']
         self.level = params['Value']
-        self.io_interface = io_interface
 
     def setGPIO(self):
         if self.level:
@@ -168,6 +239,15 @@ class SetGPIOState(TaskState):
             self.io_interface.lower_output(self.pin)
 
         return self.pin, self.level
+
+    def on_entrance(self, logger=None):
+        if self.level:
+            self.io_interface.raise_output(self.pin)
+        else:
+            self.io_interface.lower_output(self.pin)
+
+        if logger:
+            logger([time,-1,-1,-1,-1,'SetGPIO', self.pin, self.level])
 
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
@@ -178,9 +258,10 @@ class SetGPIOState(TaskState):
 
 
 class SetSoundStimulusState(TaskState):
-    def __init__(self, currentStateLabel, nextStateLabel, params, sound_controller):
-        TaskState.__init__(self, currentStateLabel, nextStateLabel)
+    def __init__(self, label, state_config, io_interface, sound_controller):
+        TaskState.__init__(self, label, state_config, io_interface)
         self.Type = 'SetSoundState'
+        params = state_config['Params']
 
         if ('Sound' not in params) or ('Value' not in params):
             raise(ValueError("SetSoundStimulusState needs a 'Sound' and a 'Value'."))
@@ -191,6 +272,7 @@ class SetSoundStimulusState(TaskState):
         self.Value = params['Value']
         
         if sound_controller:
+            self.sound_controller = sound_controller
             if params['Sound'] not in sound_controller.BackgroundSounds:
                     raise(ValueError('SetSoundStimulusState: "{}" not found in Background sounds list.'.format(params['Sound'])))
             self.Sound = sound_controller.BackgroundSounds[params['Sound']]
@@ -199,12 +281,22 @@ class SetSoundStimulusState(TaskState):
             elif self.Value == 'Off':
                 self.gain = self.Sound.off_gain
         else:
+            self.sound_controller = None
             warnings.warn("SetSoundStimulusState won't produce sound bc sound is not enabled.", RuntimeWarning)
             self.Sound = None
 
     def set_gain(self):
         if self.Sound:
             self.Sound.change_gain(self.gain)
+
+    def on_entrance(self, logger=None):
+        if self.sound_controller:
+            if self.Sound:
+                self.Sound.change_gain(self.gain)
+
+                if logger:
+                    # TODO: log which sound and which level!
+                    logger([time,-1,-1,-1,-1,'SetSoundState'])
 
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
@@ -214,8 +306,6 @@ class SetSoundStimulusState(TaskState):
             label += '<tr><td>Stop {}</td></tr>'.format(self.Sound.filename)
         label +='</table>'
         return label
-
-
 
 
 
@@ -252,23 +342,23 @@ class TaskStateMachine():
 
             if (state['Type'] == 'Delay'):
                 self.StateMachineDict[state_name] = DelayState(
-                    state_name, state['NextState'], state['Params'])
+                    state_name, state, io_interface)
 
             elif (state['Type'] == 'SetGPIO'):
                 self.StateMachineDict[state_name] = SetGPIOState(
-                    state_name, state['NextState'], state['Params'], io_interface)
+                    state_name, state, io_interface)
 
             elif (state['Type'] == 'SetSoundState'):
                 self.StateMachineDict[state_name] = SetSoundStimulusState(
-                    state_name, state['NextState'], state['Params'], sound_controller)
+                    state_name, state, io_interface, sound_controller)
 
             elif (state['Type'] == 'Reward'):
                 self.StateMachineDict[state_name] = RewardState(
-                    state_name, state['NextState'], state['Params'], io_interface, sound_controller)
+                    state_name, state, io_interface, sound_controller)
 
             elif (state['Type'] == 'Visualization'):
                 self.StateMachineDict[state_name] = VisualizationState(
-                    state_name, state['NextState'], state['Params'])
+                    state_name, state, io_interface)
                 self.needs_zmq = True
 
             else:
@@ -312,48 +402,62 @@ class TaskStateMachine():
             self.StateMachineWaiting = True
 
 
-    def update_statemachine(self, time, logger=None):
-        if self.StateMachineWaiting:  # Currently in a `Delay` or other state in which we shouldn't transition yet
-            if time > self.StateMachineWaitEndTime:
-                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
-                self.StateMachineWaiting = False
-            else:
-                pass
+    def update_statemachine(self, logger=None):
+        time = self.io_interface.MasterTime
+
+        if isinstance(self.CurrentState, VisualizationState):
+            self.CurrentState.on_entrance(self.socket, logger)
         else:
-            if self.CurrentState.Type == 'Delay':
-                delay = self.CurrentState.getDelay()
-                self.StateMachineWaitEndTime = time + delay
-                self.StateMachineWaiting = True
-                if logger:
-                    logger([time,-1,-1,-1,-1,'Delay', delay])
+            self.CurrentState.on_entrance(logger)
 
-            elif self.CurrentState.Type == 'SetGPIO':
-                pin, level = self.CurrentState.setGPIO()
-                if logger:
-                    logger([time,-1,-1,-1,-1,'SetGPIO', pin, level])
-                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+        next_state = self.CurrentState.get_next_state()
+        if next_state is not None:
+            self.CurrentState.on_exit(logger)
+            self.CurrentState = self.StateMachineDict[next_state]
+        else:
+            self.CurrentState.on_remain(logger)
 
-            elif self.CurrentState.Type == 'SetSoundState':
-                if self.sound_controller:
-                    self.CurrentState.set_gain()
-                if logger:
-                    # TODO: log which sound and which level!
-                    logger([time,-1,-1,-1,-1,'SetSoundState'])
-                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+        # if self.StateMachineWaiting:  # Currently in a `Delay` or other state in which we shouldn't transition yet
+        #     if time > self.StateMachineWaitEndTime:
+        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+        #         self.StateMachineWaiting = False
+        #     else:
+        #         pass
+        # else:
+        #     if self.CurrentState.Type == 'Delay':
+        #         delay = self.CurrentState.getDelay()
+        #         self.StateMachineWaitEndTime = time + delay
+        #         self.StateMachineWaiting = True
+        #         if logger:
+        #             logger([time,-1,-1,-1,-1,'Delay', delay])
 
-            elif self.CurrentState.Type == 'Reward':
-                pin, duration = self.CurrentState.triggerReward(time)
-                if logger:
-                    logger([time,-1,-1,-1,-1,'Reward', pin, duration])
-                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+        #     elif self.CurrentState.Type == 'SetGPIO':
+        #         pin, level = self.CurrentState.setGPIO()
+        #         if logger:
+        #             logger([time,-1,-1,-1,-1,'SetGPIO', pin, level])
+        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 
-            elif self.CurrentState.Type == 'Visualization':
-                command = self.CurrentState.getVisualizationCommand()
-                self.socket.send_string(command)
+        #     elif self.CurrentState.Type == 'SetSoundState':
+        #         if self.sound_controller:
+        #             self.CurrentState.set_gain()
+        #         if logger:
+        #             # TODO: log which sound and which level!
+        #             logger([time,-1,-1,-1,-1,'SetSoundState'])
+        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 
-                if logger:
-                    logger([time,-1,-1,-1,-1,'Visualization', command])
-                self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+        #     elif self.CurrentState.Type == 'Reward':
+        #         pin, duration = self.CurrentState.triggerReward(time)
+        #         if logger:
+        #             logger([time,-1,-1,-1,-1,'Reward', pin, duration])
+        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+
+        #     elif self.CurrentState.Type == 'Visualization':
+        #         command = self.CurrentState.getVisualizationCommand()
+        #         self.socket.send_string(command)
+
+        #         if logger:
+        #             logger([time,-1,-1,-1,-1,'Visualization', command])
+        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
 
 
     def render(self, filename):
@@ -361,7 +465,16 @@ class TaskStateMachine():
         for state_name, state in self.StateMachineDict.items():
             G.add_node(state.label, label='<'+state.get_graph_label()+'>',shape='box')
         for state_name, state in self.StateMachineDict.items():
-            G.add_edge(state.label, self.StateMachineDict[state.NextState].label)
+            next_state = state.get_next_state(rendering=True)
+            if not isinstance(next_state, list):
+                next_state = [next_state]
+
+            if isinstance(next_state, list):
+                for ns in next_state:
+                    if isinstance(ns, tuple):
+                        G.add_edge(state.label, self.StateMachineDict[ns[0]].label, label=ns[1])
+                    elif ns is not None:
+                        G.add_edge(state.label, self.StateMachineDict[ns].label)
         
         G.node_attr.update(fontname='helvetica', fontsize="10")
         G.edge_attr.update(len=3)

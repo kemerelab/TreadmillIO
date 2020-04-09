@@ -182,13 +182,13 @@ with ExitStack() as stack:
             print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}')
 
         # -------------------- Updates -------------------- 
-        Interface.update_pulses(MasterTime) # lower any outstanding GPIO pulses
+        Interface.update_pulses() # lower any outstanding GPIO pulses
 
         if SoundController:
             SoundController.update_beeps(MasterTime) # stop any outstanding beeps
 
         if StateMachine:
-            StateMachine.update_statemachine(MasterTime, writer.writerow) # update the state machine
+            StateMachine.update_statemachine(writer.writerow) # update the state machine
 
         unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
         pos = unwrapped_pos % virtual_track_length
