@@ -167,6 +167,9 @@ with ExitStack() as stack:
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
     initialUnwrappedencoder = UnwrappedEncoder
 
+    if SoundController:
+        SoundController.start_capture(args.output_dir)
+
     if StateMachine:
         StateMachine.start(MasterTime)
 
