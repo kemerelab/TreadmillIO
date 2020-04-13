@@ -37,13 +37,14 @@ StateMachine:
       Params:
         Value: 'On'
         Sound: 'PinkNoise'
-      NextState: 'Pause1'
-    Pause1:
-      Type: 'Delay'
-      Params:
-        Duration: 'Fixed'
-        Value: 1000
-      NextState: 'Reward1'
+      NextState: 
+        Reward1:
+          ConditionType: 'ElapsedTime'
+          Duration: 1000
+          Priority: 1
+        HighNoise:
+          ConditionType: 'None'
+          Priority: -1
     Reward1:
         Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
         NextState: 'Pause2'
@@ -55,7 +56,7 @@ StateMachine:
       Type: 'Delay'
       Params:
         Duration: 'Fixed'
-        Value: 500
+        Value: 1000
       NextState: 'LowNoise'
     LowNoise:
       Type: 'SetSoundState'
@@ -72,22 +73,22 @@ StateMachine:
     Pause3:
       Type: 'Delay'
       Params:
-        Duration: 'Fixed'
-        Value: 1000
+        Duration: 'Exponential'
+        Rate: 1000
+        Min: 500
+        Max: 3000
       NextState: 'Reward2'
     Reward2:
         Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
-        NextState: 'Pause4'
+        NextState:
+          TestSetGPIO2:
+            ConditionType: 'ElapsedTime'
+            Duration: 2000
+          Reward2: # default is ConditionType = 'None'
         Params:
           RewardSound: 'RewardSound2' # The name of the auditory stimulus (of type "Beep") which should be played 
           DispensePin: 'Reward2' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
           PumpRunTime: 300 # How long to run the reward pump for. Note that the Beep duration is specified in its config
-    Pause4:
-      Type: 'Delay'
-      Params:
-        Duration: 'Fixed'
-        Value: 500
-      NextState: 'TestSetGPIO2'
     TestSetGPIO2:
       Type: 'SetGPIO'
       Params:

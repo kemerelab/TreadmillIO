@@ -14,27 +14,139 @@ class StateTransitionCondition:
         # test if the condtion defined by this object is current true or false
         pass
 
+
+
 class TaskState:
+# Example yaml:
+#    ExampleState:
+#      NextState: 'SomeState'
+#    ExampleStateWithConditions:
+#      NextState: # NOTE: If no conditions are satisfied, the default is to
+#                 #       return to the current state (infinite loop)
+#                 # NOTE: Self transitions trigger the on_remain() function
+#                 #       rather than the on_entrance() function. And they
+#                 #       don't trigger the on_exit() function.
+#        SomeDefaultState1: 
+#          ConditionType: 'None'
+#          Priority: 0 # NOTE: If multiple conditions are satisfied, higher priority
+#                      #       transition is taken. By default states are assigned
+#                      #       priorities starting at -1 and decreasing. So without
+#                      #       assigned probabilities, the first transition is considered
+#                      #       the most important.
+#        SomeState2:
+#          ConditionType: 'ElapsedTime' # transition after a certain amount of time
+#                                  # NOTE: You can only have one of these. If you want
+#                                  #       an action to be able to reset the timer, use a
+#                                  #       transition to a dummy state and then back.
+#          Duration: 1000 #ms
+#          Priority: 1
+#        SomeState3: 
+#          ConditionType: 'GPIO' # transition if a GPIO has some value
+#          Pin: 'SomePinLabel'
+#          Value: True # True or False (boolean == bit)
+#          Priority: 2
+#        SomeState4: 
+#          ConditionType: 'GPIO' # transition based on an equation of GPIO values
+#          Equation: 'SomePin1Label AND SomePin2Label OR SomPin3Label' # AND, OR, XOR, NOT allowed
+#          Priority: 3
+
     def __init__(self, label, state_config, io_interface):
         self.Type = None
         self.label = label
 
         print(state_config)
 
-        self.next_state = state_config['NextState']
+        #self.next_state = state_config['NextState']
         self.io_interface = io_interface
 
-        # if not isinstance(Params['NextState'], list):
-        #     Params['NextState']
+
+        if isinstance(state_config['NextState'], str):
+            self.next_state = state_config['NextState']
+        elif isinstance(state_config['NextState'], dict):
+            self.next_state = {}
+            priority_counter = -1
+            for state_name, params in state_config['NextState'].items():
+                self.next_state[state_name] = {}
+
+                if not params:
+                    params = {}
+
+                if 'Priority' in params:
+                    self.next_state[state_name]['Priority'] = params['Priority']
+                else:
+                    # Auto-assign conditional transition priority based on order.
+                    self.next_state[state_name]['Priority'] = priority_counter
+                    priority_counter = priority_counter - 1
+
+                if 'ConditionType' in params:
+                    self.next_state[state_name]['ConditionType'] = params['ConditionType']
+                    if params['ConditionType'] == 'ElapsedTime':
+                        self.next_state[state_name]['Duration'] = params['Duration'] # this will error if its not specified
+                        self.next_state[state_name]['TransitionTime'] = -1
+                    elif params['ConditionType'] == 'GPIO':
+                        self.next_state[state_name]['Pin'] = params['Pin'] # this will error if its not specified
+                        self.next_state[state_name]['Value'] = params['Value'] # this will error if its not specified
+                    elif params['ConditionType'] == 'None':
+                        pass
+                    else:
+                        raise(ValueError('Parsing state {}. ConditionType {} is not implemented.'.format(label, params['ConditionType'])))
+                else:
+                    self.next_state[state_name]['ConditionType'] = 'None'
+
+
+            # Error check priorities
+            priorities = [s['Priority'] for (n,s) in self.next_state.items()]
+            if len(priorities) > len(set(priorities)):
+                raise(ValueError('Non unique state transition priorities detected for state {}.'.format(label)))
+
+        else:
+            raise(ValueError('Parsing state machine. State {} needs a next state.'.format(label)))
+
 
     def get_graph_label(self):
         return '<font point-size="18">{}: <b>{}</b></font>'.format(self.Type, self.label)
 
     def get_next_state(self, rendering=False):
-        return self.next_state
+        if rendering:
+            if isinstance(self.next_state, dict):
+                next_state = []
+                for state_name, condition in self.next_state.items():
+                    if condition['ConditionType'] == 'None':
+                        next_state.append( (state_name, 'Default') )
+                    elif condition['ConditionType'] == 'ElapsedTime':
+                        next_state.append( (state_name, 'Elapsed Time ({} ms)'.format(condition['Duration'])))
+                    elif condition['ConditionType'] == 'GPIO':
+                        next_state.append( (state_name, 'GPIO {} = {}'.format(condition['Pin'], condition['Value'])))
+                return next_state
+            else:
+                return self.next_state
+
+        if isinstance(self.next_state, dict):
+            time = self.io_interface.MasterTime
+            next_state = []
+            priority = []
+            for state_name, condition in self.next_state.items():
+                if  ((condition['ConditionType'] == 'ElapsedTime') and (time > condition['TransitionTime'])) or \
+                    ((condition['ConditionType'] == 'GPIO') and \
+                        (self.io_interface.read_pin(condition['Pin']) == condition['Value'])):
+                    # (note that we don't even check for "None")
+                    next_state.append(state_name)
+                    priority.append(condition['Priority'])
+            if next_state:
+                return( next_state[np.argmax(priority)] ) # return state with the highest priority
+            else:
+                return( None ) # if no condiditonal condition was matched, we stay in the same state (ignore the sel)
+        else:
+            return self.next_state
 
     def on_entrance(self, logger=None):
-        pass
+        if isinstance(self.next_state, dict):
+            for state_name, condition in self.next_state.items():
+                if (condition['ConditionType'] == 'ElapsedTime'):
+                    self.next_state[state_name]['TransitionTime'] = condition['Duration'] + self.io_interface.MasterTime
+                break # there's only supposed to be one TransitionTime state transition, so we can break if we find it
+        else:
+            pass
 
     def on_exit(self, logger=None):
         pass
@@ -43,7 +155,25 @@ class TaskState:
         pass
 
 
+
+
 class DelayState(TaskState):
+# Example yaml:
+#    ExampleFixedDelayState:
+#      Type: 'Delay'
+#      Params:
+#        Duration: 'Fixed'
+#        Value: 1000 # ms
+#      NextState: 'ExampleExponentialDelayState'
+#    ExampleExponentialDelayState:
+#      Type: 'Delay'
+#      Params:
+#        Duration: 'Exponential'
+#        Rate: 1000 # rate of exponential r.v. in ms
+#        Min: 2000  # minimum value - this is added to samples drawn from distribution
+#        Max: 4000  # maximum value - all values are truncated to this *after adding minimum*
+#      NextState: 'Something'
+
     def __init__(self, label, state_config, io_interface):
         TaskState.__init__(self, label, state_config, io_interface)
         self.Type = 'Delay'
@@ -69,22 +199,14 @@ class DelayState(TaskState):
 
         self.DelayList = cycle(self.delays)
 
-    def getDelay(self):
-        return next(self.DelayList)
+    # def getDelay(self):
+        # return next(self.DelayList)
 
     def on_entrance(self, logger=None):
-        if not self.is_waiting:
-            delay = next(self.DelayList)
-            time = self.io_interface.MasterTime
-            self.delay_end = time + delay
-            self.is_waiting = True
-        else:
-            pass
+        delay = next(self.DelayList)
+        time = self.io_interface.MasterTime
+        self.delay_end = time + delay
     
-    def on_exit(self, logger=None):
-        self.is_waiting = False
-        self.delay_end = 0
-
     def get_next_state(self, rendering=False):
         if not rendering:
             time = self.io_interface.MasterTime
@@ -134,15 +256,16 @@ class VisualizationState(TaskState):
 
         #TODO: Validate that server is online
 
-    def getVisualizationCommand(self):
-        if self.visType == 'Fixed':
-            command = self.command
-        elif self.visType == 'Random':
-            command = self.command[next(self.CommandIndices)]
+    # def getVisualizationCommand(self):
+        # if self.visType == 'Fixed':
+            # command = self.command
+        # elif self.visType == 'Random':
+            # command = self.command[next(self.CommandIndices)]
 
         return command
 
     def on_entrance(self, socket, logger= None):
+        TaskState.on_entrance(self, logger)
         if self.visType == 'Fixed':
             command = self.command
         elif self.visType == 'Random':
@@ -201,9 +324,10 @@ class RewardState(TaskState):
         return self.pin, self.duration
 
     def on_entrance(self, logger=None):
+        TaskState.on_entrance(self, logger)
         time = self.io_interface.MasterTime
         self.io_interface.pulse_output(self.pin, time + self.duration)
-        print('Reward!')
+        print('Reward! ({})'.format(self.label))
         if self.RewardSound:
             self.RewardSound.play(time)
 
@@ -241,6 +365,7 @@ class SetGPIOState(TaskState):
         return self.pin, self.level
 
     def on_entrance(self, logger=None):
+        TaskState.on_entrance(self, logger)
         if self.level:
             self.io_interface.raise_output(self.pin)
         else:
@@ -290,6 +415,7 @@ class SetSoundStimulusState(TaskState):
             self.Sound.change_gain(self.gain)
 
     def on_entrance(self, logger=None):
+        TaskState.on_entrance(self, logger)
         if self.sound_controller:
             if self.Sound:
                 self.Sound.change_gain(self.gain)
@@ -316,6 +442,7 @@ class TaskStateMachine():
 
         self.StateMachineDict = {}
         self.FirstState = None
+        self.new_state = True
 
         self.needs_zmq = False
         self.socket = None
@@ -397,67 +524,31 @@ class TaskStateMachine():
             self.socket.close()
 
     def start(self, time):
-        if (self.CurrentState.Type == 'Delay'):
-            self.StateMachineWaitEndTime = time + self.CurrentState.getDelay()
-            self.StateMachineWaiting = True
+        # if (self.CurrentState.Type == 'Delay'):
+            # self.StateMachineWaitEndTime = time + self.CurrentState.getDelay()
+            # self.StateMachineWaiting = True
+        self.new_state = True
+        pass
 
 
     def update_statemachine(self, logger=None):
         time = self.io_interface.MasterTime
 
-        if isinstance(self.CurrentState, VisualizationState):
-            self.CurrentState.on_entrance(self.socket, logger)
+        if self.new_state:
+            if isinstance(self.CurrentState, VisualizationState):
+                self.CurrentState.on_entrance(self.socket, logger)
+            else:
+                self.CurrentState.on_entrance(logger)
         else:
-            self.CurrentState.on_entrance(logger)
+            self.CurrentState.on_remain(logger)
 
         next_state = self.CurrentState.get_next_state()
         if next_state is not None:
             self.CurrentState.on_exit(logger)
             self.CurrentState = self.StateMachineDict[next_state]
+            self.new_state = True
         else:
-            self.CurrentState.on_remain(logger)
-
-        # if self.StateMachineWaiting:  # Currently in a `Delay` or other state in which we shouldn't transition yet
-        #     if time > self.StateMachineWaitEndTime:
-        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
-        #         self.StateMachineWaiting = False
-        #     else:
-        #         pass
-        # else:
-        #     if self.CurrentState.Type == 'Delay':
-        #         delay = self.CurrentState.getDelay()
-        #         self.StateMachineWaitEndTime = time + delay
-        #         self.StateMachineWaiting = True
-        #         if logger:
-        #             logger([time,-1,-1,-1,-1,'Delay', delay])
-
-        #     elif self.CurrentState.Type == 'SetGPIO':
-        #         pin, level = self.CurrentState.setGPIO()
-        #         if logger:
-        #             logger([time,-1,-1,-1,-1,'SetGPIO', pin, level])
-        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
-
-        #     elif self.CurrentState.Type == 'SetSoundState':
-        #         if self.sound_controller:
-        #             self.CurrentState.set_gain()
-        #         if logger:
-        #             # TODO: log which sound and which level!
-        #             logger([time,-1,-1,-1,-1,'SetSoundState'])
-        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
-
-        #     elif self.CurrentState.Type == 'Reward':
-        #         pin, duration = self.CurrentState.triggerReward(time)
-        #         if logger:
-        #             logger([time,-1,-1,-1,-1,'Reward', pin, duration])
-        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
-
-        #     elif self.CurrentState.Type == 'Visualization':
-        #         command = self.CurrentState.getVisualizationCommand()
-        #         self.socket.send_string(command)
-
-        #         if logger:
-        #             logger([time,-1,-1,-1,-1,'Visualization', command])
-        #         self.CurrentState = self.StateMachineDict[self.CurrentState.NextState]
+            self.new_state = False
 
 
     def render(self, filename):
