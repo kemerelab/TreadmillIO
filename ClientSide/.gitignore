@@ -3,3 +3,4 @@ Log*.txt
 
 # Python
 *.pyc
+*-checkpoint.ipynb
