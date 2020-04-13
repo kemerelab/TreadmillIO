@@ -166,6 +166,11 @@ class SerialInterface():
         else:
             self.GPIO_state &= ~(0x01 <<pin)
 
+    def read_pin(self, pin):
+        if (self.GPIO & (0x01 << (pin-1))) > 0:
+            return True
+        else:
+            return False
 
     def raise_output(self, GPIO):
         pin = self.GPIOs[GPIO]['Number']
