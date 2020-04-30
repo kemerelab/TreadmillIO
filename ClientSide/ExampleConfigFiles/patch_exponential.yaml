@@ -1,0 +1,71 @@
+Info: # "Info" configuration options can be overridden by command line options
+  MouseID: None # Used to name saved data file
+  Note: '' # Added in a block at the start of saved data file
+  Session: '' # This is added to default (date and time)
+  TaskType: Patch Foraging Task
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: True
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    Interpatch: # going from between reward zones
+      FirstState: True
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 10
+      NextState: 'InPatch-Enter'
+    InPatch-Enter:
+      Type: 'SetInternalState'
+      Params:
+        State: 'InPatch-Waiting'
+        InternalState: 'NewPatch'
+        Value: True # will call reset function 
+      NextState: 'InPatch-Waiting'
+    InPatch-Waiting: # reward zone
+      Type: 'Patch'
+      Params:
+        ModelType: 'Exponential' # or stochastic models like Poisson, etc. 
+        ModelParams: # list of params for specific model type
+          tau: # time constant
+            Distribution: 'Uniform'  
+            Low: 10.0
+            High: 15.0
+          r0: # initial decay rate
+            Distribution: 'Uniform'
+            Low: 0.5
+            High: 2.0
+        SwitchRate: 0.05
+      NextState: 
+        InPatch-Waiting:
+          ConditionType: 'None'
+          Priority: 0
+        InPatch-Reward: # reward available
+          ConditionType: 'Reward' # require all patches to have this
+          Value: 2.0 # threshold size of available reward
+          Priority: 1
+        Interpatch: # leave patch
+          # TODO: need to incorporate smoothing poke sensor
+          ConditionType: 'ElapsedTime'
+          Duration: 10000
+          Priority: 2
+    InPatch-Reward: # dispense reward
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 1
+      NextState: 'InPatch-Update'
+    InPatch-Update: # update total reward
+      Type: 'SetInternalState'
+      Params:
+        State: 'InPatch-Waiting'
+        InternalState: 'RewardHarvest'
+        Value: 2.0
+      NextState: 'InPatch-Waiting'

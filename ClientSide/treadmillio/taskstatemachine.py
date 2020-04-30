@@ -3,6 +3,7 @@ import numpy as np
 from itertools import cycle
 import warnings
 import zmq
+import random
 
 import pygraphviz
 
@@ -89,7 +90,7 @@ class TaskState:
                     elif params['ConditionType'] == 'None':
                         pass
                     else:
-                        raise(ValueError('Parsing state {}. ConditionType {} is not implemented.'.format(label, params['ConditionType'])))
+                        self.add_state_transition(state_name, params) # throw error if not implemented for condition
                 else:
                     self.next_state[state_name]['ConditionType'] = 'None'
 
@@ -117,6 +118,8 @@ class TaskState:
                         next_state.append( (state_name, 'Elapsed Time ({} ms)'.format(condition['Duration'])))
                     elif condition['ConditionType'] == 'GPIO':
                         next_state.append( (state_name, 'GPIO {} = {}'.format(condition['Pin'], condition['Value'])))
+                    else:
+                        next_state.append( (state_name, condition['ConditionType']) )
                 return next_state
             else:
                 return self.next_state
@@ -132,6 +135,10 @@ class TaskState:
                     # (note that we don't even check for "None")
                     next_state.append(state_name)
                     priority.append(condition['Priority'])
+                elif condition['ConditionType'] not in ['None', 'ElapsedTime', 'GPIO']:
+                    if self.check_state_transition(state_name, condition): # check custom state transition
+                        next_state.append(state_name)
+                        priority.append(condition['Priority'])
             if next_state:
                 return( next_state[np.argmax(priority)] ) # return state with the highest priority
             else:
@@ -144,7 +151,7 @@ class TaskState:
             for state_name, condition in self.next_state.items():
                 if (condition['ConditionType'] == 'ElapsedTime'):
                     self.next_state[state_name]['TransitionTime'] = condition['Duration'] + self.io_interface.MasterTime
-                break # there's only supposed to be one TransitionTime state transition, so we can break if we find it
+                    break # there's only supposed to be one TransitionTime state transition, so we can break if we find it
         else:
             pass
 
@@ -154,7 +161,15 @@ class TaskState:
     def on_remain(self, logger=None):
         pass
 
+    def add_state_transition(self, state_name, params):
+        """Add task-specific state transition."""
+        raise NotImplementedError('Parsing state {}. ConditionType {} is not implemented.'
+                                  .format(self.label, params['ConditionType']))
 
+    def check_state_transition(self, state_name, params):
+        """Check task-specific state transition. Returns True if condition met."""
+        raise NotImplementedError('Parsing state {}. ConditionType {} is not implemented.'
+                                  .format(self.label, params['ConditionType']))
 
 
 class DelayState(TaskState):
@@ -262,7 +277,7 @@ class VisualizationState(TaskState):
         # elif self.visType == 'Random':
             # command = self.command[next(self.CommandIndices)]
 
-        return command
+        # return command
 
     def on_entrance(self, socket, logger= None):
         TaskState.on_entrance(self, logger)
@@ -435,6 +450,349 @@ class SetSoundStimulusState(TaskState):
 
 
 
+class SetInternalState(TaskState):
+
+    def __init__(self, label, state_config, io_interface, state_dict):
+        TaskState.__init__(self, label, state_config, io_interface)
+
+        # Settings
+        self.Type = 'SetInternalState'
+        params = state_config['Params']
+
+        # Avoid setting mod state here in case 
+        # state_dict not yet fully initialized
+        self.StateDict = state_dict #  maps name to object
+        req_params = ['State', 'InternalState', 'Value']
+        if all([k in params for k in req_params]):
+            self.ModName = params['State'] # state name
+            self.ModState = None # state object
+            self.ModAttribute = params['InternalState'] # state attribute
+            self.ModValue = params['Value'] # new value
+        else:
+            raise ValueError(', '.join(req_params) + ' are required parameters.')
+
+    def _set_mod_state(self, name):
+        """Finds state object to modify."""
+        # Check that mapping exists
+        if name in self.StateDict:
+            self.ModState = self.StateDict[name]
+        else:
+            raise ValueError('State \'{}\' not found.'.format(name))
+        
+        # Check that object has attribute
+        if not hasattr(self.ModState, self.ModAttribute):
+            raise ValueError('State \'{}\' does not have attribute \'{}\'.'
+                             .format(self.ModState, self.ModAttribute))
+
+    def _get_value(self, key):
+        """Returns special cases for values of internal states."""
+        if key.lower() == 'currenttime':
+            return self.io_interface.MasterTime
+        else:
+            raise ValueError('Unknown key \'{}\'.'.format(key))
+
+    def set_internal_state(self, value):
+        # Initialize mod state if not already
+        if self.ModState is None:
+            self._set_mod_state(self.ModName)
+        
+        # Look up value if needed
+        if isinstance(value, str):
+            value = self._get_value(value)
+        
+        setattr(self.ModState, self.ModAttribute, value)
+
+    def on_entrance(self, logger=None):
+        TaskState.on_entrance(self, logger)
+        self.set_internal_state(self.ModValue)
+
+
+class PatchState(TaskState):
+
+    def __init__(self, label, state_config, io_interface):
+        self._has_reward_state = False # check to see if set in superclass init
+        TaskState.__init__(self, label, state_config, io_interface)
+
+        # Settings
+        self.Type = 'PatchState'
+        self.NewPatch = True # reset patch on entrance
+        self.RewardHarvest = 0.0 # reward harvested in time step
+        self.R_harvest = 0.0 # total harvested reward in current patch
+        params = state_config['Params']
+
+        # Parse parameters
+        if 'ModelType' not in params:
+            raise ValueError('Model type is a required parameter.')
+        elif params['ModelType'] == 'Exponential':
+            self.Model = ExponentialPatch(params['ModelType'], 
+                                          params['ModelParams'],
+                                          params.get('SwitchRate', 0.0),
+                                          self.io_interface.MasterTime)
+        elif params['ModelType'] == 'Poisson':
+            self.Model = PoissonPatch(params['ModelType'], 
+                                      params['ModelParams'],
+                                      params.get('SwitchRate', 0.0),
+                                      self.io_interface.MasterTime)
+        else:
+            raise NotImplementedError('Model type \'{}\' has not been implemented.'
+                                      .format(params['ModelType']))
+
+        # Check required reward state
+        if not self._has_reward_state:
+            raise SyntaxError('State transition of Reward type is required for PatchState.')
+
+    def add_state_transition(self, state_name, params):
+        if params['ConditionType'] == 'Reward':
+            #self.next_state[state_name]['ConditionType'] = 'Reward' # added in TaskState
+            self.next_state[state_name]['Value'] = params['Value']
+            self._has_reward_state = True
+        else:
+            raise NotImplementedError('Condition type \'{}\' not implemented for PatchState.'
+                                      .format(params['ConditionType']))
+
+    def check_state_transition(self, state_name, params):
+        if params['ConditionType'] == 'Reward':
+            return (self.Model.available_reward >= self.R_harvest + params['Value'])
+        else:
+            print(state_name)
+            raise NotImplementedError('Condition type \'{}\' not implemented for PatchState.'
+                                      .format(params['ConditionType']))
+
+    def on_entrance(self, logger=None):
+        TaskState.on_entrance(self, logger)
+
+        # Add reward if harvested
+        if self.RewardHarvest > 0.0:
+            self.R_harvest += self.RewardHarvest
+            self.RewardHarvest = 0.0
+
+        # Reset patch model if entering new patch
+        if self.NewPatch:
+            self.Model.reset(self.io_interface.MasterTime)
+            self.NewPatch = False
+            self.R_harvest = 0.0
+
+    def on_remain(self, logger=None):
+        # Update patch statistics, i.e. if reward is available
+        self.Model.update(self.io_interface.MasterTime)
+
+
+class PatchModel():
+
+    REQUIRED_PARAMS = []
+    OPTIONAL_PARAMS = []
+
+    def __init__(self, patch_type, params, p_switch=0.0, init_time=0.0, time_base='millis'):
+        # Settings
+        self.Type = patch_type
+
+        # Set internal state
+        self.R = 0 # current total reward
+        self.t = init_time # current time (sec)
+        self.t0 = init_time # initial time at start (sec)
+        if time_base == 'millis':
+            self._base = 1.0e-3
+        elif time_base == 'seconds':
+            self._base = 1.0
+
+        # New patch probability
+        self.p_switch = p_switch
+
+        # Placeholder for parameters
+        self._check_params(list(params.keys()))
+        self.param_config = params
+        self.params = {}
+        self.set_params()
+
+    def _check_params(self, param_names):
+        req_params = {k: False for k in param_names}
+        for name in param_names:
+            if name not in self.REQUIRED_PARAMS and name not in self.OPTIONAL_PARAMS:
+                raise ValueError('Model does not have parameter \'\'.'.format(name))
+            elif name in self.REQUIRED_PARAMS:
+                req_params[name] = True
+
+        if not all([v for k, v in req_params.items()]):
+            raise ValueError('Model requires parameters {}'
+                             .format(', '.join(self.REQUIRED_PARAMS)))
+
+    def get_params(self, config):
+        if not isinstance(config, dict):
+            return config
+        elif 'Distribution' not in config:
+            raise ValueError('Parameter configuration must specify distribution.')
+        if config['Distribution'] == 'Uniform':
+            return np.random.uniform(config['Low'], config['High'])
+        elif config['Distribution'] == 'LogUniform':
+            if config['Low'] <= 0.0:
+                raise ValueError('Bounds must be positive numbers.')
+            return np.exp(np.random.uniform(np.log(config['Low']), np.log(config['High'])))
+        else:
+            raise NotImplementedError('Distribution \'{}\' has not been implemented.'
+                                      .format(config['Distribution']))
+
+    def set_params(self):
+        for name, value in self.param_config.items():
+            self.params[name] = self.get_params(value)
+
+    @property
+    def available_reward(self):
+        return self.R
+
+    def update(self, time):
+        # Subclasses should use self.t instead of time in order to
+        # avoid potential conversion errors
+        self.t = time*self._base - self.t0 # convert to seconds
+
+    def reset(self, time=0.0):
+        self.R = 0.0
+        self.t = 0.0
+        self.t0 = time*self._base # convert to seconds
+
+        if random.random() < self.p_switch:
+            self.set_params()
+
+
+class ExponentialPatch(PatchModel):
+
+    REQUIRED_PARAMS = ['tau', 'r0']
+
+    def __init__(self, patch_type, params, p_switch=0.0, init_time=0.0, time_base='millis'):
+        """
+        Creates patch that fills by exponentially-decaying reward rate.
+
+        Required parameters:
+        - tau: reward decay rate (sec)
+        - r0: initial reward rate (uL/s)
+        """
+        PatchModel.__init__(self, patch_type, params, p_switch, init_time, time_base)
+
+        # Follows exponential decay:
+        # r(t) = r0 * e^(-t/tau)
+
+        # We could instead determine reward times now to save computation, 
+        # but that would require knowing the Reward state transition threshold
+        # in the initialization. Not sure which way is better...
+        #n = np.arange(int(tau*r0/R0)) # total number of rewards
+        #t_reward = -tau*np.log(1.0 - (n*R0)/(tau*r0)) * 1000 # ms
+        #self.t_reward = np.append(t_reward, np.inf) # reward times (ms)
+        #self.n_reward = 0 # current reward number
+
+    @property
+    def _r0(self):
+        return self.params['r0']
+
+    @property
+    def _tau(self):
+        return self.params['tau']
+
+    def r_func(self, t):
+        return self._r0*np.exp(-t/self._tau)
+
+    def R_func(self, t):
+        return self._r0*self._tau*(1.0 - np.exp(-t/self._tau))
+
+    def update(self, time):
+        PatchModel.update(self, time)
+        self.R = self.R_func(self.t)
+
+    
+class PoissonPatch(PatchModel):
+    
+    REQUIRED_PARAMS = ['tau', 'V0', 'lambda0']
+
+    def __init__(self, patch_type, params, p_switch=0.0, init_time=0.0, time_base='millis'):
+        """
+        Creates patch that fills by drips following Poisson process.
+
+        Required parameters:
+        - tau: decay rate for Poisson rate parameter lambda (sec)
+        - V0: drip size (uL)
+        - lambda0: initial Poisson rate parameter (sec)
+        """
+        PatchModel.__init__(self, patch_type, params, p_switch, init_time, time_base)
+
+        # Placeholder for drip times
+        self.t_drip = None
+
+    @property
+    def _tau(self):
+        return self.params['tau']
+
+    @property
+    def _V0(self):
+        return self.params['V0']
+
+    @property
+    def _lambda0(self):
+        return self.params['lambda0']
+
+    def _lam(self, t):
+        return self._lambda0*np.exp(-t/self._tau)
+
+    def _Lam(self, t, s):
+        return self._lambda0*self._tau*(np.exp(-t/self._tau) - np.exp(-(t+s)/self._tau))
+
+    def _inv_cdf(self, F, t_0):
+        return -(1.0/self._lam(t_0))*np.log(1.0 - F)
+
+    def _interevent_times(self, n, t, t_max=1000.0):
+        # Generate interevent times for lam(t)
+        F = np.random.uniform(size=n)
+        t = self._inv_cdf(F, t)
+        t[t > t_max] = t_max # cutoff at maximum interval
+        return t
+
+    def _events(self, t, s, t_max=1000.0):
+        """Generate number of events based on instantaneous Poisson rate."""
+        # Guess number of events as Poisson mean
+        mean = self._lam(t)*s
+        chunk = max(int(mean), 1)
+        
+        # Generate interevent times
+        t = self._interevent_times(chunk, t, t_max)
+        T = np.cumsum(t) # event times
+        idx = np.searchsorted(T, s, side='left')
+        n = idx  # number of event times < s
+
+        # Continue sampling time until time s reached
+        while (idx == T.size):
+            t = self._interevent_times(chunk, t, t_max)
+            T = np.cumsum(t) + T[-1]
+            idx = np.searchsorted(T, s, side='left')
+            n += idx
+            
+        return n
+
+    def _create_drip_times(self, t, s, t_max=None):
+        if t_max is None:
+            t_max = s
+
+        # Get event times with rate lambda_max
+        lam_max = self._lam(t) # current rate is maximum due to exponential decay
+        N_s = self._events(t, s, t_max) # number of events
+        #N_s = np.random.poisson(lam_max*s)
+        t_event = np.sort(np.random.uniform(low=t, high=t+s, size=N_s)) # time of events
+        
+        # Prune drip times to generate inhomogeneous process
+        lam_t = self._lam(t_event)
+        U = np.random.uniform(size=N_s)
+        return t_event[U <= (lam_t / lam_max)]
+
+    def update(self, time):
+        PatchModel.update(self, time)
+
+        if self.t_drip is None:
+            self.t_drip = self._create_drip_times(self.t, 1000.0)
+
+        self.R = np.sum(self.t_drip <= self.t)*self._V0
+
+    def reset(self, time=0.0, **params):
+        PatchModel.reset(self, time)
+
+        self.t_drip = None
+
+
 class TaskStateMachine():
     def __init__(self, config, io_interface=None, sound_controller=None):
 
@@ -463,6 +821,7 @@ class TaskStateMachine():
             self.sound_controller = sound_controller
 
         # ---------------- Process YAML config file / dictionary -------------------------------------------
+        set_internal = {} # SetInternalStates must be processed last
         for state_name, state in config['States'].items():
             if 'FirstState' in state and state['FirstState']:
                 self.FirstState = state_name
@@ -488,10 +847,23 @@ class TaskStateMachine():
                     state_name, state, io_interface)
                 self.needs_zmq = True
 
+            elif (state['Type'] == 'Patch'):
+                self.StateMachineDict[state_name] = PatchState(
+                    state_name, state, io_interface)
+
+            elif (state['Type'] == 'SetInternalState'):
+                set_internal[state_name] = state
+
             else:
                 raise(NotImplementedError("State machine elements other than "
                                           "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
 
+        for state_name, state in set_internal.items(): # avoids KeyError if state not yet added
+            # NOTE: Is it better to parse State parameter here, 
+            #       or to pass entire dict to SetInternalState object?
+            self.StateMachineDict[state_name] = SetInternalState(
+                state_name, state, io_interface, self.StateMachineDict)
+            
         if self.FirstState is None:
             self.FirstState = list(self.StateMachineDict.keys())[0]
             print('First state in state machine not defined. '
