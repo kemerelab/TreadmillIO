@@ -513,6 +513,14 @@ class SetInternalState(TaskState):
         TaskState.on_entrance(self, logger)
         self.set_internal_state(self.ModValue)
 
+    def get_graph_label(self):
+        label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
+        label += '<tr><td align="left">State: {}</td></tr>'.format(self.ModName)
+        label += '<tr><td align="left">Internal State: {}</td></tr>'.format(self.ModAttribute)
+        label += '<tr><td align="left">Value: {}</td></tr>'.format(self.ModValue)
+        label +='</table>'
+        return label
+
 
 class PatchState(TaskState):
 
@@ -582,6 +590,17 @@ class PatchState(TaskState):
     def on_remain(self, logger=None):
         # Update patch statistics, i.e. if reward is available
         self.Model.update(self.io_interface.MasterTime)
+
+    def get_graph_label(self):
+        label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
+        label += '<tr><td align="left">Model Type: {}</td></tr>'.format(self.Type)
+        label += '<tr><td align="left">Model Params: </td></tr>'
+        for name, p in self.Model.param_config.items():
+            if isinstance(p, dict):
+                p = ', '.join(['{}={}'.format(k, v) for k, v in p.items()])
+            label += '<tr><td align="left">&emsp;{}: {}</td></tr>'.format(name, p)
+        label +='</table>'
+        return label
 
 
 class PatchModel():
