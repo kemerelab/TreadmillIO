@@ -403,23 +403,27 @@ class SetSoundStimulusState(TaskState):
         self.Type = 'SetSoundState'
         params = state_config['Params']
 
-        if ('Sound' not in params) or ('Value' not in params):
-            raise(ValueError("SetSoundStimulusState needs a 'Sound' and a 'Value'."))
-
-        if  params['Value'] not in ['On','Off']:
-            raise(ValueError("SetSoundStimulusState 'Value' must be 'On' or 'Off'"))
-
-        self.Value = params['Value']
+        self.Sound = {}
         
         if sound_controller:
             self.sound_controller = sound_controller
-            if params['Sound'] not in sound_controller.BackgroundSounds:
-                    raise(ValueError('SetSoundStimulusState: "{}" not found in Background sounds list.'.format(params['Sound'])))
-            self.Sound = sound_controller.BackgroundSounds[params['Sound']]
-            if self.Value == 'On':
-                self.gain = self.Sound.baseline_gain
-            elif self.Value == 'Off':
-                self.gain = self.Sound.off_gain
+            for sound, value in params.items():
+                self.Sound[sound] = {}
+                
+                if sound not in sound_controller.BackgroundSounds:
+                    raise(ValueError('SetSoundStimulusState: "{}" not found in Background sounds list.'.format(sound)))
+                else:  
+                    self.Sound[sound]['Sound'] = sound_controller.BackgroundSounds[sound]
+                
+                if value not in ['On','Off']:
+                    raise(ValueError("SetSoundStimulusState 'Value' must be 'On' or 'Off'"))
+                else:
+                    self.Sound[sound]['Value'] = value
+
+                if value == 'On':
+                    self.Sound[sound]['Gain'] = self.Sound[sound]['Sound'].baseline_gain
+                elif value == 'Off':
+                    self.Sound[sound]['Gain'] = self.Sound[sound]['Sound'].off_gain
         else:
             self.sound_controller = None
             warnings.warn("SetSoundStimulusState won't produce sound bc sound is not enabled.", RuntimeWarning)
@@ -427,13 +431,15 @@ class SetSoundStimulusState(TaskState):
 
     def set_gain(self):
         if self.Sound:
-            self.Sound.change_gain(self.gain)
+            for sound, params in self.Sound.items(): 
+                params['Sound'].change_gain(params['Gain'])
 
     def on_entrance(self, logger=None):
         TaskState.on_entrance(self, logger)
         if self.sound_controller:
             if self.Sound:
-                self.Sound.change_gain(self.gain)
+                for sound, params in self.Sound.items(): 
+                    params['Sound'].change_gain(params['Gain'])
 
                 if logger:
                     # TODO: log which sound and which level!
@@ -441,10 +447,11 @@ class SetSoundStimulusState(TaskState):
 
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
-        if self.Value == 'On':
-            label += '<tr><td>Play {}</td></tr>'.format(self.Sound.filename)
-        if self.Value == 'Off':
-            label += '<tr><td>Stop {}</td></tr>'.format(self.Sound.filename)
+        for sound, params in self.Sound.items(): 
+            if params['Value'] == 'On':
+                label += '<tr><td>Play {}</td></tr>'.format(params['Sound'].filename)
+            if params['Value'] == 'Off':
+                label += '<tr><td>Stop {}</td></tr>'.format(params['Sound'].filename)
         label +='</table>'
         return label
 
