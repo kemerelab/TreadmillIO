@@ -412,8 +412,8 @@ class SoundStimulus():
             raise EnvironmentError('Stimulus must be assigned to output device.')
         minimixer = device.minimixer
         channel = device.channel
-        if 'MinimixInputPort' in stimulus_params:
-            inputPort = stimulus_params['MinimixInputPort']
+        if 'MinimixerInputPort' in stimulus_params:
+            inputPort = stimulus_params['MinimixerInputPort']
             portName = '{}:in{}_{}'.format(minimixer, inputPort, channel)
             if jack_client.get_all_connections(portName):
                 raise(ValueError("Specified port {} is already connected".format(portName)))
