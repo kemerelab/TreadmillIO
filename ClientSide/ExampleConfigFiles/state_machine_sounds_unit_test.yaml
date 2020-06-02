@@ -1,0 +1,83 @@
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: True
+
+GPIO: # A list of GPIO pins used in the task
+  Reward1:
+    Number: 1
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    Start:
+      Type: 'SetSoundState'
+      Params:
+        LeftEarSound: 'On'
+        RightEarSound: 'On'
+      NextState: 'LeftSilence'
+    LeftSilence:
+      Type: 'SetSoundState'
+      Params:
+        LeftEarSound: 'Off'
+      NextState:
+        LeftSound:
+          ConditionType: 'ElapsedTime'
+          Duration: 1000
+          Priority: 1
+    LeftSound:
+      Type: 'SetSoundState'
+      Params:
+        LeftEarSound: 'On'
+      NextState:
+        LeftSilence:
+          ConditionType: 'ElapsedTime'
+          Duration: 1000
+          Priority: 1
+
+
+AuditoryStimuli:
+  AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
+  StimuliList:
+    LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'pink_noise.wav'
+      BaselineGain: 0.0
+      Device: 'Speaker1' # or single device, or list of devices
+    RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_3kHz.wav'
+      BaselineGain: 0.0
+      Device: 'Speaker2'
+  DeviceList:
+    Speaker1:
+      Type: 'Output' # Input or Output
+      ClientName: 'system' # host name of JACK device (default system)
+      PortName: 'playback_1' # port name on JACK device (default capture, playback)
+      OscPort: 12000 # OSC port for associated minimixer
+      MinimixerChannel: 'left'
+      Record: False # record signal to/from device with jack_capture?
+    Speaker2:
+      Type: 'Output'
+      ClientName: 'system'
+      PortName: 'playback_2'
+      OscPort: 12001
+      MinimixerChannel: 'left'
+      Record: False
+    Microphone1:
+      Type: 'Input'
+      ClientName: 'system'
+      PortName: 'capture_1'
+      Record: True
+    Microphone2:
+      Type: 'Input'
+      ClientName: 'system'
+      PortName: 'capture_2'
+      Record: True
+

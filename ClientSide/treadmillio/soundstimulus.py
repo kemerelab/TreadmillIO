@@ -127,6 +127,7 @@ class SoundStimulusController():
         if stimulus['Type'] == 'Background':
             new_stimulus = SoundStimulus(stimulus, file_root, device, verbose)
             self.BackgroundSounds[stimulus_name] = new_stimulus
+            new_stimulus.change_gain(new_stimulus.baseline_gain) # For background sounds, they should be on at the beginning
             #visualization.add_zone_position(0, VirtualTrackLength, fillcolor=stimulus['Color'], width=0.5, alpha=0.75)
         elif stimulus['Type'] == 'Beep':
             new_stimulus = BeepSound(stimulus, file_root, device, verbose)

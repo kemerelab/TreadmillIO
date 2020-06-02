@@ -2,7 +2,7 @@ Info: # "Info" configuration options can be overridden by command line options
   MouseID: V1A1 # Used to name saved data file
   Note: '' # Added in a block at the start of saved data file
   Session: '' # This is added to default (date and time)
-  TaskType: Moana Classical Conditioning
+  TaskType: Auditory VR Example
 
 Preferences:
   HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
@@ -24,16 +24,15 @@ GPIO: # A list of GPIO pins used in the task
                  # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
 
 Maze:
-  #Type: 'VR' # VR or physical
-  Type: 'StateMachine' # VR or physical
+  Type: 'VR' # VR or physical
   EncoderGain: 4096.0 # Encoder value per revolution
-  Length: 150.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
+  Length: 300.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
   WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
   TrackTransform: None # Not currently implemented.
 
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds'
+  AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
 
   Defaults:
     Filename: '' # if no filename is specified, we'll raise an error later
@@ -51,25 +50,44 @@ AuditoryStimuli:
       MinimixInputPort: 1 # jackminimix channel to use. By default, these will be auto-assigned if not specified
       MinimixChannel: 'left' # stereo audio channel whose volume should be controlled for this stimulus
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
-      BaselineGain: -5.0
-      Filename: 'tone_cloud.wav'
+      BaselineGain: -12.0
+      Filename: 'tone_cloud_96_long.wav'
       Color: 'pink' # Matplotlib color name used for visualization system
+      Device: 'Speaker1' # or single device, or list of devices
     Zone_1:
       CenterPosition: 12.5 
-      Filename: 'tone_7kHz.wav'
+      Filename: 'tone_7kHz_96.wav'
       Modulation:
-        Width: 10
+        Width: 50
       Color: 'lime'
+      Device: 'Speaker1' # or single device, or list of devices
     Zone_2:
       CenterPosition: 102.5 
-      Filename: 'tone_11kHz.wav'
+      Filename: 'tone_4kHz_96.wav'
       Modulation:
         Width: 25
       Color: 'orange'
+      Device: 'Speaker1' # or single device, or list of devices
     RewardSound:
       Type: 'Beep'
-      Filename: 'tone_3kHz.wav'
+      Filename: 'tone_3kHz_96.wav'
       Duration: 250 # ms
+      Device: 'Speaker1' # or single device, or list of devices
+
+  DeviceList:
+    Speaker1:
+      Type: 'Output' # Input or Output
+      ClientName: 'system' # host name of JACK device (default system)
+      PortName: 'playback_1' # port name on JACK device (default capture, playback)
+      OscPort: 12000 # OSC port for associated minimixer
+      MinimixerChannel: 'left'
+      Record: False # record signal to/from device with jack_capture?
+    Microphone1:
+      Type: 'Input'
+      ClientName: 'system'
+      PortName: 'capture_1'
+      Record: True
+
 
 RewardZones:
   RewardZoneList:
