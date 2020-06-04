@@ -51,26 +51,26 @@ AuditoryStimuli:
       MinimixChannel: 'left' # stereo audio channel whose volume should be controlled for this stimulus
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       BaselineGain: -12.0
-      Filename: 'tone_cloud_96_long.wav'
+      Filename: 'tone_cloud.wav'
       Color: 'pink' # Matplotlib color name used for visualization system
       Device: 'Speaker1' # or single device, or list of devices
     Zone_1:
       CenterPosition: 50 
-      Filename: 'tone_7kHz_96.wav'
+      Filename: 'tone_7kHz.wav'
       Modulation:
         Width: 80
       Color: 'lime'
       Device: 'Speaker1' # or single device, or list of devices
     Zone_2:
       CenterPosition: 150
-      Filename: 'tone_3kHz_96.wav'
+      Filename: 'tone_3kHz.wav'
       Modulation:
         Width: 80
       Color: 'orange'
       Device: 'Speaker1' # or single device, or list of devices
     RewardSound:
       Type: 'Beep'
-      Filename: 'tone_3kHz_96.wav'
+      Filename: 'tone_3kHz.wav'
       Duration: 250 # ms
       Device: 'Speaker1' # or single device, or list of devices
 
