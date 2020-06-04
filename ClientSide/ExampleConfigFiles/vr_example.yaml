@@ -55,17 +55,17 @@ AuditoryStimuli:
       Color: 'pink' # Matplotlib color name used for visualization system
       Device: 'Speaker1' # or single device, or list of devices
     Zone_1:
-      CenterPosition: 12.5 
+      CenterPosition: 50 
       Filename: 'tone_7kHz_96.wav'
       Modulation:
-        Width: 50
+        Width: 80
       Color: 'lime'
       Device: 'Speaker1' # or single device, or list of devices
     Zone_2:
-      CenterPosition: 102.5 
-      Filename: 'tone_4kHz_96.wav'
+      CenterPosition: 150
+      Filename: 'tone_3kHz_96.wav'
       Modulation:
-        Width: 25
+        Width: 80
       Color: 'orange'
       Device: 'Speaker1' # or single device, or list of devices
     RewardSound:
