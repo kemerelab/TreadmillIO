@@ -13,6 +13,8 @@ import os
 import argparse
 import yaml
 from multiprocessing import Process, Pipe
+import time
+import pickle
 
 #from profilehooks import profile
 
@@ -23,7 +25,7 @@ DEFAULT_BUFFER_SIZE = 16
 DEFAULT_DTYPE = 'int16'
 
 class Stimulus():
-    def __init__(self, filename, data_buffer, channel, buffer_len, gain):
+    def __init__(self, filename, data_buffer, channel, buffer_len, gain_db):
         self.fs, self.stimulus_buffer = scipy.io.wavfile.read(filename)
         # if self.stimulus_buffer.dtype != dtype:
         #     raise(ValueError('Specified dtype for {} is {} but file is actually {}'.format(
@@ -39,7 +41,7 @@ class Stimulus():
         self.buffer_len = buffer_len
         self.stimulus_len = len(self.stimulus_buffer)
         self.channel = channel
-        self.gain = np.power(10, gain/20)
+        self._gain = np.power(10, gain_db/20)
     
     def get_nextbuf(self):
         remainder = self.curpos + self.buffer_len - self.stimulus_len
@@ -52,13 +54,22 @@ class Stimulus():
             self.data[:,self.channel] = self.stimulus_buffer[self.curpos:(self.curpos+self.buffer_len)]
             self.curpos += self.buffer_len
 
-        self.data[:] = self.data[:] * self.gain # make sure not to copy!
+        self.data[:] = self.data[:] * self._gain # make sure not to copy!
         # we don't need to return anything because the caller has a view
         # to the memory that self.data is looking at
 
+    @property
+    def gain(self):
+        return self._gain
+    
+    @gain.setter
+    def gain(self, gain):
+        self._gain = gain
 
 class ALSAPlaybackSystem():
-    def __init__(self, config, device):
+    def __init__(self, config, device, control_pipe):
+        self.control_pipe = control_pipe
+
         file_root = config.get('AudioFileDirectory', None)
         buffer_size = config.get('BufferSize', DEFAULT_BUFFER_SIZE)
         dtype = config.get('DType', DEFAULT_DTYPE)
@@ -121,7 +132,22 @@ class ALSAPlaybackSystem():
 
         self.out_buf = np.zeros((buffer_size,2), dtype=dtype, order='C')
 
+    def set_gain(self, stimulus, gain):
+        self.stimuli[stimulus].gain = gain
+
     def play(self):
+        print(time.time())
+        if self.control_pipe.poll():
+            msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
+            commands = pickle.loads(msg)
+            try:
+                for key, gain in commands.items():
+                    if key in self.stimuli:
+                        self.stimuli[key].gain = gain
+                #set_gain()
+            except:
+                print('Exception: ', commands)
+
         while True:
             for _, stim in self.stimuli.items():
                 stim.get_nextbuf()
@@ -129,10 +155,21 @@ class ALSAPlaybackSystem():
             res, xruns = self.adevice.write(self.out_buf)
             if xruns != 0:
                 print('Xrun! {}'.format(xruns))
+                print(time.time())
+            if self.control_pipe.poll():
+                msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
+                commands = pickle.loads(msg)
+                try:
+                    for key, gain in commands.items():
+                        if key in self.stimuli:
+                            self.stimuli[key].gain = gain
+                    #set_gain()
+                except:
+                    print('Exception: ', commands)
 
 
-def run_audio_process(config, device):
-    sound_system = ALSAPlaybackSystem(config, device)
+def run_audio_process(config, device, control_pipe):
+    sound_system = ALSAPlaybackSystem(config, device, control_pipe)
     sound_system.play()
 
 
@@ -149,9 +186,18 @@ if __name__ == '__main__':
     with open(args.param_file, 'r') as f:
         config = yaml.safe_load(f)
 
-    audio_p = Process(target=run_audio_process, args=(config['AuditoryStimuli'], args.device))
+    p_alsa, p_master = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from p_alsa
+
+    audio_p = Process(target=run_audio_process, args=(config['AuditoryStimuli'], args.device, p_alsa))
     audio_p.daemon = True
     audio_p.start()     # Launch the sound process
+
+    t = np.arange(0,10,0.005)
+    gain = np.cos(np.pi*2*t).tolist()
+
+    for g in gain:
+        time.sleep(0.005)
+        p_master.send_bytes(pickle.dumps({'RightEarSound':g}))
 
     audio_p.join()
 
