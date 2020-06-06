@@ -49,6 +49,9 @@ parser.add_argument('-R','--random-seed', default=None,
                     help='Random seed. If specified, this also overrides the YAML configuration file.')
 parser.add_argument('--output-dir', default='./',
                     help='Directory to write output file (defaults to cwd)')
+parser.add_argument('-d','--device', default='default',  
+                    help='ALSA device for playback')
+
 args = parser.parse_args()
 if not os.path.isdir(args.output_dir):
     os.mkdir(args.output_dir)
@@ -105,7 +108,8 @@ from treadmillio.soundstimulus import SoundStimulusController
 
 with ExitStack() as stack:
     if 'AuditoryStimuli' in Config and EnableSound:
-        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length))
+        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], args.device,
+                                                                      virtual_track_length))
     else:
         SoundController = None
         if 'AuditoryStimuli' in Config:

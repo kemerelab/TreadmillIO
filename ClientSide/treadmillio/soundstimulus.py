@@ -1,83 +1,44 @@
 import time
 from subprocess import Popen, DEVNULL
-import jack # pip install JACK-client
-from oscpy.client import OSCClient
+
 import os
 import warnings
 import socket
 import signal
 
-@jack.set_error_function
-def error(msg):
-    print('JackClientError:', msg)
+from multiprocessing import Process, Pipe
+import pickle
 
-# Suppress printing of JACK Client info when we start it up later
-@jack.set_info_function
-def info(msg):
-    pass
-
-def minimixer_cmd(speaker):
-    return ['/usr/local/bin/jackminimix', 
-            '-{}'.format(args.side[0]), '{}:{}'.format(speaker['ClientName'], speaker['PortName']), 
-            '-p', '{}'.format(speaker['OSCPort']),
-            '-n', 'minimixer-{}'.format(speaker['Name'])]
-
-def jackplay_cmd(speaker, channel, filename):
-    return ['/usr/local/bin/sndfile-jackplay', 
-            '-l', '0', 
-            '-a=minimixer-{}:{}'.format(speaker['Name'], channel), 
-            '{}{}'.format(AUDIO_DIR, filename)]
-
-def jackcapture_cmd(device, output_dir):
-    return ['/usr/local/bin/jack_capture',
-            '--channels', '1',
-            '--port', '{}:{}'.format(device['ClientName'], device['PortName']),
-            '--timestamp',
-            '--filename-prefix', '{}/{}-'.format(output_dir, device['Name'])]
+from treadmillio.alsainterface import ALSAPlaybackSystem
 
 # Default parameters
 DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
                          'ClientName': 'system',
-                         'PortName': 'playback_1',
-                         'OscPort': 12345,
-                         'MinimixerChannel': 'left',
+                         'Channel': 1,
+                        #  'PortName': 'playback_1',
+                        #  'OscPort': 12345,
+                        #  'MinimixerChannel': 'left',
                          'Record': False}
 
 DEFAULT_INPUT_DEVICE = {'Type': 'Input',
-                        'ClientName': 'system',
-                        'PortName': 'capture_1',
+                        'Channel': 1, 
+                        # 'ClientName': 'system',
+                        # 'PortName': 'capture_1',
                         'Record': True}
+
+def run_audio_process(config, device, control_pipe):
+    sound_system = ALSAPlaybackSystem(config, device, control_pipe)
+    sound_system.play()
 
 class SoundStimulusController():
 
-    def __init__(self, sound_config, track_length=None, verbose=0):
-        #start jack with = ['/usr/bin/jackd', '--realtime', '-P10','-d', 'alsa', '-p128', '-n2', '-r48000']
-        #self.p_jack = Popen(jack_cmd, stdout=DEVNULL, stderr=DEVNULL)
+    def __init__(self, sound_config, playback_device, track_length=None, verbose=0):
 
-        if 'MaximumNumberOfStimuli' in sound_config:
-            totalStimuli = sound_config['MaximumNumberOfStimuli']
-        else:
-            totalStimuli = 10
+        p_from_main, self.p_alsa = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from p_from_main
 
-        if 'AudioFileDirectory' in sound_config:
-            file_root = sound_config['AudioFileDirectory']
-        else:
-            file_root = None
-
-        # Device placeholders
-        self.devices = {}
-        self.record_devices = []
-
-        # Add audio I/O devices
-        if 'DeviceList' in sound_config:
-            DeviceList = sound_config['DeviceList']
-        else:
-            DeviceList = {'Default': DEFAULT_OUTPUT_DEVICE}
-        for device_name, device in DeviceList.items():
-            if verbose > 1:
-                print('Adding device {}...'.format(device_name))
-            self.add_device(device_name, device, verbose)
-            time.sleep(0.25)
+        self._audio_process = Process(target=run_audio_process, args=(sound_config, playback_device, p_from_main))
+        self._audio_process.daemon = True
+        self._audio_process.start()     # Launch the sound process
 
         # Get stimuli parameters
         StimuliList = sound_config['StimuliList']
@@ -103,34 +64,16 @@ class SoundStimulusController():
         for stimulus_name, stimulus in StimuliList.items():
             if verbose > 1:
                 print('Adding stimulus {}...'.format(stimulus_name))
-            device = self.devices[stimulus.get('Device', 'Default')]
-            self.add_stimulus(stimulus_name, stimulus, file_root, device, track_length, verbose)
+            self.add_stimulus(stimulus_name, stimulus, track_length, verbose)
 
-    def add_device(self, device_name, device, verbose=0):
-        if 'Type' not in device:
-            raise ValueError('Device type must be specified for device \'{}\'.'.format(device_name))
-        elif device['Type'].lower() == 'output':
-            # Add output device
-            self.devices[device_name] = SoundOutputDevice(device_name, device, verbose)
-            if device.get('Record', DEFAULT_OUTPUT_DEVICE['Record']):
-                self.record_devices.append(device_name)
-        elif device['Type'].lower() == 'input':
-            # Add input device
-            self.devices[device_name] = SoundInputDevice(device_name, device, verbose)
-            if device.get('Record', DEFAULT_INPUT_DEVICE['Record']):
-                self.record_devices.append(device_name)
-        else:
-            raise ValueError('Unknown device type \'{}\'.'.format(device['Type']))
-
-    def add_stimulus(self, stimulus_name, stimulus, file_root, device, track_length=None, verbose=0):
+    def add_stimulus(self, stimulus_name, stimulus, track_length=None, verbose=0):
         # Add to type-specific mapping
         if stimulus['Type'] == 'Background':
-            new_stimulus = SoundStimulus(stimulus, file_root, device, verbose)
+            new_stimulus = SoundStimulus(stimulus_name, stimulus, self.p_alsa, verbose)
             self.BackgroundSounds[stimulus_name] = new_stimulus
-            new_stimulus.change_gain(new_stimulus.baseline_gain) # For background sounds, they should be on at the beginning
             #visualization.add_zone_position(0, VirtualTrackLength, fillcolor=stimulus['Color'], width=0.5, alpha=0.75)
         elif stimulus['Type'] == 'Beep':
-            new_stimulus = BeepSound(stimulus, file_root, device, verbose)
+            new_stimulus = BeepSound(stimulus_name, stimulus, self.p_alsa, verbose)
             self.Beeps[stimulus_name] = new_stimulus
         elif stimulus['Type'] == 'Localized':
             if not track_length:
@@ -138,7 +81,7 @@ class SoundStimulusController():
             # visualization.add_zone_position(stimulus['CenterPosition'] - stimulus['Modulation']['Width']/2, 
             #                     stimulus['CenterPosition'] + stimulus['Modulation']['Width']/2, 
             #                     fillcolor=stimulus['Color'])
-            new_stimulus = LocalizedSound(track_length, stimulus, file_root, device, verbose)
+            new_stimulus = LocalizedSound(track_length, stimulus_name, stimulus, self.p_alsa, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
         else:
             raise ValueError('Unknown stimulus type \'{}\'.'.format(stimulus['Type']))
@@ -157,41 +100,48 @@ class SoundStimulusController():
             raise KeyError('No sound stimulus with name \'{}\'.'.format(stimulus_name))
 
     def start_capture(self, file_root):
-        for device_name in self.record_devices:
-            self.devices[device_name].start_capture(file_root)
+        pass
 
     def stop_capture(self):
-        for device_name in self.record_devices:
-            self.devices[device_name].stop_capture()
-        
+        pass
+
     def update_beeps(self, time):
+        update_dict = {}
         for _, beep in self.Beeps.items():
-            beep.update(time)
+            new_beep_value = beep.update(time)
+            if new_beep_value is not None:
+                update_dict[beep.name] = new_beep_value
+        if update_dict:
+            self.p_alsa.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
     def update_localized(self, pos):
+        update_dict = {}
         for _, sound in self.LocalizedStimuli.items():
-            sound.pos_update_gain(pos)
+            pos_gain =  sound.pos_update_gain(pos)
+            if pos_gain is not None:
+                update_dict[sound.name] =  pos_gain
+        if update_dict:
+            self.p_alsa.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
-    def update_stimulus(self, stimulus, device, value):
+    def update_stimulus(self, stimulus, value):
         # TODO: error checking
         gain = None
-        s = self.devices[device].get_stimulus(stimulus)
         if isinstance(value, str):
             if value.lower() in ['on', 'baseline']:
-                gain = s.baseline_gain
+                gain = stimulus.baseline_gain
             elif value.lower() == 'off':
-                gain = s.off_gain
+                gain = stimulus.off_gain
         elif isinstance(value, (int, float)):
             gain = value
 
         if gain is None:
             raise ValueError('Value of {} not understood.'.format(value))
         else:
-            return s.change_gain(gain)
+            return stimulus.change_gain(gain)
 
     def close_process(self):
-        for _, device in self.devices.items():
-            device.close()
+        self.p_alsa.send_bytes(pickle.dumps({'StopMessage': True}))
+        self._audio_process.join()
                 
     def __del__(self):
         self.close_process()
@@ -200,187 +150,14 @@ class SoundStimulusController():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        for _, stimulus in self._Stimuli.items():
-            stimulus.close_processes()
         self.close_process()
-
-class SoundDevice():
-
-    def __init__(self, name, device_config, verbose=0):
-        # NOTE: pass parameters as dictionary or **kwargs?
-        # Dictionary sets default as constant dict above; 
-        # **kwargs sets defaults directly in __init__()
-        
-        # Device name and type
-        self.name = name
-        self.verbose = verbose
-
-        # Record process
-        self.p_capture = None
-
-    @property
-    def client_name(self):
-        raise NotImplementedError
-
-    @property
-    def port_name(self):
-        raise NotImplementedError
-
-    def start_capture(self, file_root):
-        cmd = ['/usr/local/bin/jack_capture',
-               '--channels', '1',
-               '--port', '{}:{}'.format(self.client_name, self.port_name),
-               '--timestamp',
-               '--filename-prefix', '{}/{}-'.format(file_root, self.name), # will not overwrite file
-               '--jack-name', 'jack_capture-{}'.format(self.name),
-               '--no-stdin'] 
-        if self.verbose > 2:
-            self.p_capture = Popen(cmd)
-        else:
-            self.p_capture = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-        return True
-
-    def stop_capture(self, timeout=10.0):
-        if self.p_capture:
-            msg_name = 'jack_capture-{} on {}:{}'.format(self.name, self.client_name, self.port_name)
-            self.p_capture.send_signal(signal.SIGINT)
-            try:
-                if self.p_capture.wait(timeout) != 0:
-                    warnings.warn('Error closing {}.'.format(msg_name))
-                elif self.verbose > 2:
-                    print('Closed {}.'.format(msg_name))
-            except TimeoutError:
-                warnings.warn('{} timed out. Killing process...'.format(msg_name))
-                self.p_capture.kill()
-            self.p_capture = None
-
-    def close(self):
-        self.stop_capture()
-        self._close()
-    
-    def _close(self):
-        pass
-            
-
-class SoundInputDevice(SoundDevice):
-    def __init__(self, name, device_config, verbose=0):
-        SoundDevice.__init__(self, name, device_config, verbose)
-
-        # Settings
-        self.type = 'input'
-
-        # Create JACK client
-        try:
-            jack_client = jack.Client('PythonJackClient', no_start_server=True)
-        except jack.JackError:
-            raise(EnvironmentError("Jack server not started"))
-
-        # Check JACK ports
-        self._client_name = device_config.get('ClientName', DEFAULT_INPUT_DEVICE['ClientName'])
-        self._port_name = device_config.get('PortName', DEFAULT_INPUT_DEVICE['PortName'])
-        input_port = '{}:{}'.format(self._client_name, self._port_name)
-        if not jack_client.get_ports(input_port, is_output=True):
-            raise EnvironmentError('JACK capture port {} not found.'.format(input_port))
-        
-        # Close client
-        jack_client.close()
-
-    @property
-    def client_name(self):
-        return self._client_name
-
-    @property
-    def port_name(self):
-        return self._port_name
-
-class SoundOutputDevice(SoundDevice):
-
-    def __init__(self, name, device_config, verbose=0):
-        SoundDevice.__init__(self, name, device_config, verbose)
-
-        # Settings
-        self.type = 'output'
-
-        # Create JACK client
-        try:
-            jack_client = jack.Client('PythonJackClient', no_start_server=True)
-        except jack.JackError:
-            raise(EnvironmentError("Jack server not started"))
-        
-        # Check JACK ports
-        self._client_name = device_config.get('ClientName', DEFAULT_OUTPUT_DEVICE['ClientName'])
-        self._port_name = device_config.get('PortName', DEFAULT_OUTPUT_DEVICE['PortName'])
-        output_port = '{}:{}'.format(self.client_name, self.port_name)
-        if not jack_client.get_ports(output_port, is_input=True):
-            raise EnvironmentError('JACK playback port {} not found.'.format(output_port))
-
-        # Check OSC port (warning or exception?)
-        self.osc_port = device_config.get('OscPort', DEFAULT_OUTPUT_DEVICE['OscPort'])
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            try:
-                s.bind((socket.gethostname(), self.osc_port))
-            except OSError as e:
-                if e.errno == 98:
-                    warnings.warn('OscPort {} already in use.'.format(self.osc_port))
-
-        # Get minimixer channel
-        self.channel = device_config.get('MinimixerChannel', DEFAULT_OUTPUT_DEVICE['MinimixerChannel']).lower()
-        if self.channel not in ['left', 'right']:
-            raise ValueError('Minimixer channel must be \'left\' or \'right\' but is \'{}\''.format(self.channel))
-            
-        # Handle the minimixer already running
-        self.minimixer = 'minimixer-{}'.format(self.name)
-        if not jack_client.get_ports(self.minimixer, is_input=True): # minimix not started
-            # Start minimixer with device parameters
-            minimixer_cmd = ['/usr/local/bin/jackminimix', 
-                             '-{}'.format(self.channel[0]), '{}:{}'.format(self.client_name, self.port_name), 
-                             '-p', '{}'.format(self.osc_port),
-                             '-n', self.minimixer]
-            if (self.verbose > 1):
-                self.p_minimix = Popen(minimixer_cmd)
-            else:
-                self.p_minimix = Popen(minimixer_cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-            # Check for connection
-            for i in range(5):
-                if jack_client.get_ports(self.minimixer, is_input=True):
-                    break
-                time.sleep(1.0)
-            if jack_client.get_ports(self.minimixer, is_input=True):
-                print('JACK {} started'.format(self.minimixer))
-            else:
-                raise(EnvironmentError("Could not start minimixer"))
-        else:
-            print('Connecting to existing minimixer instance.')
-
-        # Close client
-        jack_client.close() 
-
-    @property
-    def client_name(self):
-        return self._client_name
-
-    @property
-    def port_name(self):
-        return self._port_name
-
-    def _close(self, timeout=10.0):
-        if self.p_minimix:
-            self.p_minimix.send_signal(signal.SIGINT)
-            try:
-                if self.p_minimix.wait(timeout) != 0:
-                    warnings.warn('Error closing {}.'.format(self.minimixer))
-                elif self.verbose > 2:
-                    print('Closed {}.'.format(self.minimixer))
-            except TimeoutError:
-                warnings.warn('{} timed out. Killing process...'.format(self.minimixer))
-                self.p_minimix.kill()
-            self.p_minimix = None
 
 
 class SoundStimulus():
-    def __init__(self, stimulus_params, file_root, device, verbose):
+    def __init__(self, stimulus_name, stimulus_params, p_alsa, verbose):
+        self.name = stimulus_name
+        self.p_alsa = p_alsa
+
         # Gain parameters
         if 'BaselineGain' in stimulus_params:
             self.baseline_gain = stimulus_params['BaselineGain']
@@ -392,106 +169,22 @@ class SoundStimulus():
         else:
             self.off_gain = -90.0 
 
-        # File settings
-        filename = stimulus_params['Filename']
-        self.name = filename
-        if file_root is not None:
-            filename = os.path.join(file_root, filename)
-        if not os.path.isfile(filename):
-            raise(ValueError("Sound file {} could not be found.".format(filename)))
-        else:
-            if verbose > 1:
-                print('Loading: {}'.format(filename))
-        self.filename = filename
-
-        # Set up JACK environment
-        self.p_jackplay = None # in case del called before init complete
-        jack_client = jack.Client('PythonJackClient', no_start_server=True)
-
-        # Minimixer input port (1, 2, 3, ...)
-        if device.type.lower() != 'output':
-            raise EnvironmentError('Stimulus must be assigned to output device.')
-        minimixer = device.minimixer
-        channel = device.channel
-        if 'MinimixerInputPort' in stimulus_params:
-            inputPort = stimulus_params['MinimixerInputPort']
-            portName = '{}:in{}_{}'.format(minimixer, inputPort, channel)
-            if jack_client.get_all_connections(portName):
-                raise(ValueError("Specified port {} is already connected".format(portName)))
-        else: # Auto assign a new minimxer port to this stimulus
-            availablePortNames = [p.name for p in jack_client.get_ports('{}:'.format(minimixer), is_input=True)]
-            if availablePortNames is None:
-                raise(EnvironmentError("Jack minimix appears not to be running."))
-            inputPort = 1
-            portName = '{}:in{}_{}'.format(minimixer, inputPort, channel)            
-            while portName in availablePortNames:
-                if not jack_client.get_all_connections(portName):
-                    self.inputPort = inputPort
-                    break;
-                else:
-                    inputPort = inputPort + 1
-                    portName = '{}:in{}_{}'.format(minimixer,inputPort,channel)
-            
-        if not jack_client.get_ports(portName):
-            raise(EnvironmentError("Not enough minimixer ports. Restart with 'MaximumNumberOfStimuli' of at least {}".format(inputPort)))
-        else:
-            if (verbose > 1):
-                print('Input port: {}'.format(inputPort))
-
-        # Save minimixer settings
-        self.device = device
-        self.inputPort = inputPort
-        self.portName = portName
-
-        jack_client.close()
-
         # Set gain prior to playing sound
         self.gain = self.off_gain # NOTE: Is it easier to have sounds off initially?
-        self.oscC = OSCClient('127.0.0.1', int(device.osc_port))
-        self.oscC.send_message(b'/mixer/channel/set_gain',[int(self.inputPort), self.gain])
+        self.p_alsa.send_bytes(pickle.dumps({self.name: self.gain}))
 
-        # Play sound
-        jackplay_cmd = ['/usr/local/bin/sndfile-jackplay', '-l0', '-a={}'.format(self.portName), '{}'.format(self.filename)]
-        if (verbose > 1):
-            print(jackplay_cmd)
-        if verbose > 2:
-            self.p_jackplay = Popen(jackplay_cmd)
-        else:
-            self.p_jackplay = Popen(jackplay_cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-        # Save variables for class methods
-        self.minimixer = minimixer
-        self.channel = channel
+        self.device = stimulus_params['Device']
         self.verbose = verbose
-
-        time.sleep(0.25)
 
     def change_gain(self, gain):
         if gain != self.gain:
-            self.oscC.send_message(b'/mixer/channel/set_gain',[int(self.inputPort), gain])
+            self.p_alsa.send_bytes(pickle.dumps({self.name: gain}))
             self.gain = gain
-
-    def close_processes(self, timeout=10.0):
-        if self.p_jackplay:
-            msg_name = 'jackplay-{} on '.format(self.name, self.portName)
-            self.p_jackplay.send_signal(signal.SIGINT)
-            try:
-                if self.p_jackplay.wait(timeout) != 0:
-                    warnings.warn('Error closing {}.'.format(msg_name))
-                elif self.verbose > 2:
-                    print('Closed {}.'.format(msg_name))
-            except TimeoutError:
-                warnings.warn('{} timed out. Killing process...'.format(msg_name))
-                self.p_jackplay.kill()
-            self.p_jackplay = None
-
-    def __del__(self):
-        self.close_processes()
 
 
 class LocalizedSound(SoundStimulus):
-    def __init__(self, track_length, stimulus_params, file_root, device, verbose):
-        SoundStimulus.__init__(self, stimulus_params, file_root, device, verbose)
+    def __init__(self, track_length, stimulus_name, stimulus_params, p_alsa, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, p_alsa, verbose)
 
         # TODO check that these are all set. I need to know my name in order to give
         #  a meaningful warning, though.
@@ -501,7 +194,6 @@ class LocalizedSound(SoundStimulus):
         self.trackLength = track_length
         self.maxGain = self.baseline_gain
         self.minGain = stimulus_params['Modulation']['CutoffGain']
-
 
     def linear_gain_from_pos(self, pos):
         relpos = (pos - self.center) % self.trackLength
@@ -525,12 +217,13 @@ class LocalizedSound(SoundStimulus):
         else:
             new_gain = (1 - abs(relpos/self.half)) * (self.maxGain - self.minGain) + self.minGain
 
-        SoundStimulus.change_gain(self, new_gain)
+        return new_gain
+        #SoundStimulus.change_gain(self, new_gain)
 
 
 class BeepSound(SoundStimulus):
-    def __init__(self, stimulus_params, file_root, device, verbose):
-        SoundStimulus.__init__(self, stimulus_params, file_root, device, verbose)
+    def __init__(self, stimulus_name, stimulus_params, p_alsa, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, p_alsa, verbose)
         if 'Duration' in stimulus_params:
             self.duration = stimulus_params['Duration']
         else:
@@ -551,5 +244,7 @@ class BeepSound(SoundStimulus):
     def update(self, time):
         if self.is_playing:
             if (time > self.time_beep_off):
-                SoundStimulus.change_gain(self,self.off_gain)
                 self.is_playing = False
+                # SoundStimulus.change_gain(self,self.off_gain)
+                return self.off_gain
+        return None # if we didn't already return!
