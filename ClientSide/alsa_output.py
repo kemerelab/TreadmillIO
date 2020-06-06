@@ -23,6 +23,7 @@ DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
 
 DEFAULT_BUFFER_SIZE = 16
 DEFAULT_DTYPE = 'int16'
+ILLEGAL_STIMULUS_NAMES = ['StopMessage']
 
 class Stimulus():
     def __init__(self, filename, data_buffer, channel, buffer_len, gain_db):
@@ -104,6 +105,9 @@ class ALSAPlaybackSystem():
         self.data_buf = np.zeros((buffer_size,2,len(StimuliList))) # data buffer for all data
         k = 0
         for stimulus_name, stimulus in StimuliList.items():
+            if stimulus_name in ILLEGAL_STIMULUS_NAMES:
+                raise(ValueError('{} is an illegal name for a stimulus.'.format(stimulus_name)))
+
             print('Adding stimulus {}...'.format(stimulus_name))
             channel = self._devices[stimulus.get('Device', 'Default')]
             gain = stimulus.get('BaselineGain', 0)
@@ -120,6 +124,11 @@ class ALSAPlaybackSystem():
         else:
             self.fs = self.fs.pop()
 
+        # start reading from the pipe to get what ever initialization happens out of the way
+        if self.control_pipe.poll():
+            msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
+            print('Unexpected message before start: {}'.format(msg))
+
         # Open alsa device
         self.adevice = alsaaudio.PCM(device=device)
         self.adevice.setchannels(2) # We'll always present stereo audio
@@ -132,21 +141,14 @@ class ALSAPlaybackSystem():
 
         self.out_buf = np.zeros((buffer_size,2), dtype=dtype, order='C')
 
+    def __del__(self):
+        self.adevice.close()
+
     def set_gain(self, stimulus, gain):
         self.stimuli[stimulus].gain = gain
 
     def play(self):
         print(time.time())
-        if self.control_pipe.poll():
-            msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
-            commands = pickle.loads(msg)
-            try:
-                for key, gain in commands.items():
-                    if key in self.stimuli:
-                        self.stimuli[key].gain = gain
-                #set_gain()
-            except:
-                print('Exception: ', commands)
 
         while True:
             for _, stim in self.stimuli.items():
@@ -159,6 +161,9 @@ class ALSAPlaybackSystem():
             if self.control_pipe.poll():
                 msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
                 commands = pickle.loads(msg)
+                if 'StopMessage' in commands: # TODO parse config file to make sure 'StopMessage' is not a stimulus
+                    break;
+
                 try:
                     for key, gain in commands.items():
                         if key in self.stimuli:
@@ -198,6 +203,8 @@ if __name__ == '__main__':
     for g in gain:
         time.sleep(0.005)
         p_master.send_bytes(pickle.dumps({'RightEarSound':g}))
+
+    p_master.send_bytes(pickle.dumps({'StopMessage': True}))
 
     audio_p.join()
 
