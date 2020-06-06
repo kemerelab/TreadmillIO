@@ -34,53 +34,40 @@ Maze:
 AuditoryStimuli:
   AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
 
-  Defaults:
-    Filename: '' # if no filename is specified, we'll raise an error later
-    Type: 'Localized'
-    CenterPosition: 0.0
-    BaselineGain: 0.0 # Max gain for linear stimuli
-    Modulation:
-      Type: Linear
-      #Rate: -20.0 # dB/cm
-      Width: 25 # cm in which sound is on (full width)
-      CutoffGain: -60.0 #dB at cutoff
-
   StimuliList:
     BackgroundSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
-      MinimixInputPort: 1 # jackminimix channel to use. By default, these will be auto-assigned if not specified
-      MinimixChannel: 'left' # stereo audio channel whose volume should be controlled for this stimulus
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
-      BaselineGain: -12.0
+      BaselineGain: -6.0
       Filename: 'tone_cloud.wav'
       Color: 'pink' # Matplotlib color name used for visualization system
       Device: 'Speaker1' # or single device, or list of devices
     Zone_1:
+      Type: 'Localized'
       CenterPosition: 50 
       Filename: 'tone_7kHz.wav'
+      BaselineGain: 0.0 # Max gain for linear stimuli
       Modulation:
-        Width: 80
+        Type: Linear
+        CutoffGain: -60.0 #dB at cutoff
+        Width: 50
       Color: 'lime'
       Device: 'Speaker1' # or single device, or list of devices
     Zone_2:
-      CenterPosition: 150
+      Type: 'Localized'
+      CenterPosition: 120
       Filename: 'tone_3kHz.wav'
+      BaselineGain: 0.0 # Max gain for linear stimuli
       Modulation:
+        Type: Linear
+        CutoffGain: -60.0 #dB at cutoff
         Width: 80
       Color: 'orange'
-      Device: 'Speaker1' # or single device, or list of devices
-    RewardSound:
-      Type: 'Beep'
-      Filename: 'tone_3kHz.wav'
-      Duration: 250 # ms
       Device: 'Speaker1' # or single device, or list of devices
 
   DeviceList:
     Speaker1:
       Type: 'Output' # Input or Output
-      ClientName: 'system' # host name of JACK device (default system)
-      PortName: 'playback_1' # port name on JACK device (default capture, playback)
-      OscPort: 12000 # OSC port for associated minimixer
-      MinimixerChannel: 'left'
+      Channel: 1
       Record: False # record signal to/from device with jack_capture?
     Microphone1:
       Type: 'Input'
@@ -103,5 +90,5 @@ RewardZones:
       ResetZoneStart: 100
       ResetZoneEnd: 130
       Color: 'black'
-      RewardSound: 'RewardSound'
+      #RewardSound: 'RewardSound'
 
