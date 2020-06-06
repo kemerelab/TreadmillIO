@@ -9,7 +9,7 @@ import signal
 from multiprocessing import Process, Pipe
 import pickle
 
-from treadmillio.alsainterface import ALSAPlaybackSystem
+from .alsainterface import ALSAPlaybackSystem
 
 # Default parameters
 DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
@@ -28,7 +28,13 @@ DEFAULT_INPUT_DEVICE = {'Type': 'Input',
 
 def run_audio_process(config, device, control_pipe):
     sound_system = ALSAPlaybackSystem(config, device, control_pipe)
-    sound_system.play()
+    try:
+        sound_system.play()
+    except KeyboardInterrupt:
+        print('Caught SIGINT in ALSA process')
+        sound_system.running = False
+
+
 
 class SoundStimulusController():
 
@@ -139,18 +145,17 @@ class SoundStimulusController():
         else:
             return stimulus.change_gain(gain)
 
-    def close_process(self):
-        self.p_alsa.send_bytes(pickle.dumps({'StopMessage': True}))
-        self._audio_process.join()
-                
     def __del__(self):
-        self.close_process()
+        pass
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        self.close_process()
+        print('SoundStimulController exiting. Waiting for ALSA process to join.')
+        # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
+        #self.p_alsa.send_bytes(pickle.dumps({'StopMessage': True}))
+        self._audio_process.join()
 
 
 class SoundStimulus():
@@ -178,6 +183,13 @@ class SoundStimulus():
 
     def change_gain(self, gain):
         if gain != self.gain:
+            rawgain = 10.0 ** (gain * 0.05) # /20
+            self.p_alsa.send_bytes(pickle.dumps({self.name: rawgain}))
+            self.gain = gain
+
+    def change_gain_raw(self, gain):
+        if gain != self.gain:
+            print({self.name: gain})
             self.p_alsa.send_bytes(pickle.dumps({self.name: gain}))
             self.gain = gain
 

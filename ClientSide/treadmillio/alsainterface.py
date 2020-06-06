@@ -69,6 +69,8 @@ class Stimulus():
 
 class ALSAPlaybackSystem():
     def __init__(self, config, device, control_pipe):
+        self.running = False
+
         self.control_pipe = control_pipe
 
         file_root = config.get('AudioFileDirectory', None)
@@ -124,10 +126,13 @@ class ALSAPlaybackSystem():
         else:
             self.fs = self.fs.pop()
 
+        ####
+        # Todo: WHAT HAPPENS IF WE CONTROL C RIGHT DURING THIS????
         # start reading from the pipe to get what ever initialization happens out of the way
         if self.control_pipe.poll():
             msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
             print('Unexpected message before start: {}'.format(msg))
+
 
         # Open alsa device
         self.adevice = alsaaudio.PCM(device=device)
@@ -140,6 +145,7 @@ class ALSAPlaybackSystem():
         self.adevice.setperiodsize(buffer_size)
 
         self.out_buf = np.zeros((buffer_size,2), dtype=dtype, order='C')
+        ######
 
     def __del__(self):
         self.adevice.close()
@@ -149,8 +155,8 @@ class ALSAPlaybackSystem():
 
     def play(self):
         print(time.time())
-
-        while True:
+        self.running = True
+        while self.running:
             for _, stim in self.stimuli.items():
                 stim.get_nextbuf()
             self.out_buf[:] = self.data_buf.sum(axis=2).astype(dtype=self.out_buf.dtype, order='C')
@@ -161,7 +167,8 @@ class ALSAPlaybackSystem():
             while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
                 msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
                 commands = pickle.loads(msg)
-                if 'StopMessage' in commands: 
+                if 'StopMessage' in commands:
+                    print('Got StopMessage in ALSA process.')
                     break;
                 try:
                     for key, gain in commands.items():
@@ -170,6 +177,9 @@ class ALSAPlaybackSystem():
                     #set_gain()
                 except:
                     print('Exception: ', commands)
+
+        if self.running == False:
+            print('SIGINT flag changed.')
 
 
 

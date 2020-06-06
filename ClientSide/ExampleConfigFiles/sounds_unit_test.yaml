@@ -16,16 +16,11 @@ Maze:
 
 StateMachine:
   States:
-    Start:
-      Type: 'SetSoundState'
-      Params:
-        LeftEarSound: 'On'
-        RightEarSound: 'On'
-      NextState: 'LeftSilence'
     LeftSilence:
       Type: 'SetSoundState'
       Params:
-        LeftEarSound: 'Off'
+        RightEarSound: 'Off'
+        #LeftEarSound: 'On'
       NextState:
         LeftSound:
           ConditionType: 'ElapsedTime'
@@ -34,7 +29,8 @@ StateMachine:
     LeftSound:
       Type: 'SetSoundState'
       Params:
-        LeftEarSound: 'On'
+        RightEarSound: 'On'
+        #LeftEarSound: 'Off'
       NextState:
         LeftSilence:
           ConditionType: 'ElapsedTime'
@@ -45,12 +41,12 @@ StateMachine:
 AuditoryStimuli:
   AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
   StimuliList:
-    LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+    RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'pink_noise.wav'
       BaselineGain: 0.0
       Device: 'Speaker1' # or single device, or list of devices
-    RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+    LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'tone_3kHz.wav'
       BaselineGain: 0.0
@@ -59,17 +55,10 @@ AuditoryStimuli:
     Speaker1:
       Type: 'Output' # Input or Output
       ClientName: 'system' # host name of JACK device (default system)
-      PortName: 'playback_1' # port name on JACK device (default capture, playback)
-      OscPort: 12000 # OSC port for associated minimixer
-      MinimixerChannel: 'left'
       Channel: 0
       Record: False # record signal to/from device with jack_capture?
     Speaker2:
       Type: 'Output'
-      ClientName: 'system'
-      PortName: 'playback_2'
-      OscPort: 12001
-      MinimixerChannel: 'left'
       Channel: 1
       Record: False
     Microphone1:
