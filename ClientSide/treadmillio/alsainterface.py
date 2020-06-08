@@ -18,6 +18,7 @@ import pickle
 
 #from profilehooks import profile
 
+
 DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
                          'Channel': 0}
 
@@ -143,6 +144,9 @@ class ALSAPlaybackSystem():
         else:
             raise(ValueError("dtypes other than 'int16' not currently supported."))
         self.adevice.setperiodsize(buffer_size)
+        print('\nALSA playback configuration\n')
+        self.adevice.dumpinfo()
+        print('\n\n')
 
         self.out_buf = np.zeros((buffer_size,2), dtype=dtype, order='C')
         ######
@@ -164,22 +168,22 @@ class ALSAPlaybackSystem():
             if xruns != 0:
                 print('Xrun! {}'.format(xruns))
                 print(time.time())
+
             while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
                 msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
                 commands = pickle.loads(msg)
-                if 'StopMessage' in commands:
-                    print('Got StopMessage in ALSA process.')
-                    break;
+                # if 'StopMessage' in commands:
+                #     print('Got StopMessage in ALSA process.')
+                #     break;
                 try:
                     for key, gain in commands.items():
                         if key in self.stimuli:
                             self.stimuli[key].gain = gain
-                    #set_gain()
                 except:
                     print('Exception: ', commands)
 
+
         if self.running == False:
             print('SIGINT flag changed.')
-
 
 
