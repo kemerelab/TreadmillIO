@@ -42,24 +42,52 @@ GPIO: # A list of GPIO pins used in the task
                  # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
   Poke1:
     Number: 3
-    Type: 'Input'
+    Type: 'Output'
   Poke2:
     Number: 4
-    Type: 'Input'
+    Type: 'Output'
   Lick1:
     Number: 5
-    Type: 'Input'
+    Type: 'Output'
   Lick2:
     Number: 6
-    Type: 'Input'
+    Type: 'Output'
 
 Maze:
   Type: 'StateMachine' # VR or physical
 
 StateMachine:
   States:
-    Interpatch1: # going from reward zone 1 to 2
+    InitialState: # either patch available
       FirstState: True
+      Type: 'SetSoundState'
+      Params:
+        InterpatchSound1: 'Off'
+        InPatchSound1: 'On'
+        RewardSound1: 'Off'
+        InterpatchSound2: 'Off'
+        InPatchSound2: 'On'
+        RewardSound2: 'Off'
+      NextState:
+        InitialPatch1:
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: True
+        InitialPatch2:
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: True
+    InitialPatch1:
+      Type: 'SetSoundState'
+      Params:
+        InPatchSound2: 'Off'
+      NextState: 'InPatch1-Enter'
+    InitialPatch2:
+      Type: 'SetSoundState'
+      Params:
+        InPatchSound1: 'Off'
+      NextState: 'InPatch2-Enter'
+    Interpatch1: # going from reward zone 1 to 2
       Type: 'SetSoundState'
       Params: # allow single value or list format; not sure if this is best syntax
         InPatchSound1: 'Off'
@@ -129,11 +157,13 @@ StateMachine:
           ConditionType: 'GPIO'
           Pin: 6 #'Lick2'
           Value: True
+          Priority: 1
         Interpatch2: # leave patch
           # TODO: need to incorporate smoothing poke sensor
           ConditionType: 'GPIO'
           Pin: 4 #'Poke2'
           Value: False
+          Priority: 2
     InPatch2-Reward: # dispense reward
       Type: 'Reward'
       Params:
@@ -186,11 +216,11 @@ StateMachine:
             Distribution: 'Uniform'
             Low: 10.0
             High: 15.0
-          V0: 1.0 # drip size (example of fixed value)
+          V0: 0.5 # drip size (example of fixed value)
           lambda0: # initial rate for Poisson process (example of log-uniform dist)
             Distribution: 'LogUniform'
             Low: 1.0
-            High: 10.0
+            High: 2.0
         SwitchRate: 0.1
       NextState: 
         InPatch1-Waiting:
@@ -199,11 +229,13 @@ StateMachine:
         InPatch1-Available: # reward available
           ConditionType: 'Reward' # require all patches to have this
           Value: 2.0 # threshold size of available reward
+          Priority: 1
         Interpatch1: # leave patch
           # TODO: need to incorporate smoothing poke sensor
           ConditionType: 'GPIO'
           Pin: 3 #'Poke1'
           Value: False
+          Priority: 2
     InPatch1-Available: # play reward sound when reward available
       Type: 'SetSoundState'
       Params:
@@ -269,14 +301,13 @@ AuditoryStimuli:
       Filename: 'tone_3kHz.wav'
       MinimixerInputPort: 3 # minimixer channel input
       BaselineGain: 0.0
-      Duration: 250 # ms
       Device: 'Speaker1'
     RewardSound2:
       Type: 'Background'
       Filename: 'tone_3kHz.wav'
       MinimixerInputPort: 3 # minimixer channel input
       BaselineGain: 0.0
-      Duration: 250 # ms
+      OffGain: -90.0
       Device: 'Speaker2' # or single device, or list of devicess
   DeviceList:
     Speaker1:
