@@ -23,6 +23,7 @@ def run_audio_playback_process(device_name, config, file_dir, control_pipe):
     playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe)
     try:
         # cProfile.runctx('playback_system.play()', globals(), locals(), "results.prof") # useful for debugging
+        print('Playback starting')
         playback_system.play()
     except KeyboardInterrupt:
         print('Caught SIGINT in ALSA process')
@@ -31,6 +32,7 @@ def run_audio_playback_process(device_name, config, file_dir, control_pipe):
 def run_audio_record_process(device_name, config, log_directory):
     record_system = ALSARecordSystem(device_name, config, log_directory)
     try:
+        print('Record starting')
         record_system.record()
     except KeyboardInterrupt:
         print('Caught SIGINT in ALSA process')
@@ -39,7 +41,7 @@ def run_audio_record_process(device_name, config, log_directory):
 
 class SoundStimulusController():
 
-    def __init__(self, sound_config, playback_device, track_length=None, log_directory=None, verbose=0):
+    def __init__(self, sound_config, track_length=None, log_directory=None, verbose=0):
 
         # TODO: Handle pipes for multiple audio devices
         if 'DeviceList' in sound_config:
@@ -118,7 +120,7 @@ class SoundStimulusController():
         else:
             raise KeyError('No sound stimulus with name \'{}\'.'.format(stimulus_name))
 
-    def start_capture(self, file_root):
+    def start_capture(self):
         pass
 
     def stop_capture(self):

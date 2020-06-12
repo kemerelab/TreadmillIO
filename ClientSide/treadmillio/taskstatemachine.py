@@ -287,6 +287,7 @@ class VisualizationState(TaskState):
             command = self.command[next(self.CommandIndices)]
         socket.send_string(command)
 
+        time = self.io_interface.MasterTime
         if logger:
             logger([time,-1,-1,-1,-1,'Visualization', command])
 
@@ -386,6 +387,7 @@ class SetGPIOState(TaskState):
         else:
             self.io_interface.lower_output(self.pin)
 
+        time = self.io_interface.MasterTime
         if logger:
             logger([time,-1,-1,-1,-1,'SetGPIO', self.pin, self.level])
 
@@ -441,6 +443,7 @@ class SetSoundStimulusState(TaskState):
                 for sound, params in self.Sound.items(): 
                     params['Sound'].change_gain(params['Gain'])
 
+                time = self.io_interface.MasterTime
                 if logger:
                     # TODO: log which sound and which level!
                     logger([time,-1,-1,-1,-1,'SetSoundState'])
@@ -933,6 +936,7 @@ class TaskStateMachine():
         time = self.io_interface.MasterTime
 
         if self.new_state:
+            # print(self.CurrentState.label) # TODO: Add Degug/Verbosity to the configuration and spit these out if it's set
             if isinstance(self.CurrentState, VisualizationState):
                 self.CurrentState.on_entrance(self.socket, logger)
             else:

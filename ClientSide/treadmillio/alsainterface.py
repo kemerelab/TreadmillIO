@@ -16,6 +16,7 @@ from multiprocessing import Process, Pipe
 import time
 import pickle
 import soundfile
+import warnings
 
 #from profilehooks import profile
 
@@ -139,11 +140,12 @@ class ALSAPlaybackSystem():
             self.fs = self.fs.pop()
 
         ####
-        # Todo: WHAT HAPPENS IF WE CONTROL C RIGHT DURING THIS????
+        # TODO: WHAT HAPPENS IF WE CONTROL C RIGHT DURING THIS????
         # start reading from the pipe to get what ever initialization happens out of the way
         if self.control_pipe.poll():
             msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
             print('Unexpected message before start: {}'.format(msg))
+            print('TODO: Figure out how to shutdown pipes properly\n') # TODO here
 
 
         # Open alsa device
@@ -155,7 +157,8 @@ class ALSAPlaybackSystem():
         else:
             raise(ValueError("dtypes other than 'int16' not currently supported."))
         self.adevice.setperiodsize(buffer_size)
-        print('\nALSA playback configuration\n')
+
+        print('\nALSA playback configuration ' + '-'*10 + '\n')
         self.adevice.dumpinfo()
         print('\n\n')
 
@@ -201,11 +204,15 @@ class ALSARecordSystem():
     def __init__(self, dev_name, config, log_directory=None):
         self.running = False
 
+        if not log_directory:
+            warnings.warn("Recording microphone input to cwd because log file wasn't specified.")
+            log_directory = os.getcwd()
+
         buffer_size = config.get('BufferSize', DEFAULT_INPUT_DEVICE['BufferSize'])
         dtype = config.get('DType', DEFAULT_INPUT_DEVICE['DType'])
         device = config.get('HWDevice', DEFAULT_INPUT_DEVICE['HWDevice'])
-        self.fs = config.get('HWDevice', DEFAULT_INPUT_DEVICE['SamplingRate'])
-        self.channels = config.get('HWDevice', DEFAULT_INPUT_DEVICE['NChannels'])
+        self.fs = config.get('SamplingRate', DEFAULT_INPUT_DEVICE['SamplingRate'])
+        self.channels = config.get('NChannels', DEFAULT_INPUT_DEVICE['NChannels'])
 
         # Open alsa device
         self.adevice = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, device=device)
@@ -219,15 +226,18 @@ class ALSARecordSystem():
 
         self.adevice.setperiodsize(buffer_size)
 
-        self.in_buf = np.zeros((buffer_size, self.channels), dtype='int16', order='C')
+        self.in_buf = np.zeros((buffer_size*4, self.channels), dtype='int16', order='C')
 
         self.adevice.enable_timestamps()
-        print('\nALSA record configuration\n')
-        self.adevice.dumpinfo()
-        print('\n\n')
 
         self.logfilename = os.path.join(log_directory, 'microphone.wav.log')
         self.soundfilename = os.path.join(log_directory, 'microphone.wav')
+
+        print('Recording microphone input in: {}.\n'.format(self.soundfilename))
+        print('\nALSA record configuration ' + '-'*10 + '\n')
+        self.adevice.dumpinfo()
+        print('\n\n')
+
         ######
 
     def __del__(self):
@@ -235,15 +245,14 @@ class ALSARecordSystem():
 
     def record(self):
         print(time.time())
-        self.adevice.start_timestamps()
         with open(self.logfilename, 'w') as logfile, \
-            soundfile.SoundFile(self.soundfilename, 'w', self.fs, self.channels, 'PCM_16') as soundfile:
+            soundfile.SoundFile(self.soundfilename, 'w', self.fs, self.channels, 'PCM_16') as sf:
             print('Timestamps for soundfile frames. Each record is [nsamps, time], where time is CLOCK_MONOTONIC.\n', file=logfile)
             self.running = True
             while self.running:
-                nsamp = self.adevice.read(self.in_buf)
+                nsamp = self.adevice.read_into(self.in_buf)
                 t = self.adevice.gettimestamp()
-                soundfile.write(self.in_buf[:nsamp,:])
+                sf.write(self.in_buf[:nsamp,:])
                 print('{}, {}\n'.format(nsamp, t), file=logfile)
 
             if self.running == False:
