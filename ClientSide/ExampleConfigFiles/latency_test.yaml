@@ -19,8 +19,8 @@ Preferences:
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
-  AutoLogFileDirectory: True
-  #LogFileDirectory: 'Something/Something'
+  AutoLogDirectory: True
+  #LogDirectory: 'Something/Something'
 
 GPIO: # A list of GPIO pins used in the task
   PulsePin:
@@ -46,24 +46,24 @@ AuditoryStimuli:
     TestBeep: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       BaselineGain: -6.0
-      Filename: 'tone_7kHz.wav'
+      Filename: 'tone_3kHz.wav'
       Color: 'pink' # Matplotlib color name used for visualization system
       Device: 'Speaker1' # or single device, or list of devices
 
   DeviceList:
     Output1:
       Type: 'Output' # Input or Output
-      HWDevice: 'hw:1,0'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
       NChannels: 2
       ChannelLabels:
         Speaker1: 1
       Record: False # record signal to/from device with jack_capture?
     Microphone1:
       Type: 'Input'
-      HWDevice: 'hw:1,0'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
       NChannels: 2
-      SamplingRate: 48000, # I'd like to autodetect from playback, but this would require communication between processes
-      BufferSize: 1024, 
+      SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
+      BufferSize: 1024 
       Record: True
       FilenameHeader: ''
 
