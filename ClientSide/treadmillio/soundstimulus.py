@@ -44,6 +44,10 @@ class SoundStimulusController():
     def __init__(self, sound_config, track_length=None, log_directory=None, verbose=0):
 
         # TODO: Handle pipes for multiple audio devices
+        # TODO: Error check the YAML file before this to make sure
+        #       that sound stimuli specify devices that are in the device list
+        #       otherwise, the process will be exit without the main program
+        #       realizing it.
         if 'DeviceList' in sound_config:
             for dev_name, dev in sound_config['DeviceList'].items():
                 if dev['Type'] == 'Output':

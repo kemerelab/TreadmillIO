@@ -1,3 +1,7 @@
+# This config file is intendend to do a simple test of sound playback.
+# If it is working, the sound should switch from the left ear to the right
+# each second, with pink noise on the right and a 3 kHz tone on the left.
+
 Preferences:
   HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
@@ -20,7 +24,7 @@ StateMachine:
       Type: 'SetSoundState'
       Params:
         RightEarSound: 'Off'
-        #LeftEarSound: 'On'
+        LeftEarSound: 'On'
       NextState:
         LeftSound:
           ConditionType: 'ElapsedTime'
@@ -30,7 +34,7 @@ StateMachine:
       Type: 'SetSoundState'
       Params:
         RightEarSound: 'On'
-        #LeftEarSound: 'Off'
+        LeftEarSound: 'Off'
       NextState:
         LeftSilence:
           ConditionType: 'ElapsedTime'
@@ -52,23 +56,18 @@ AuditoryStimuli:
       BaselineGain: 0.0
       Device: 'Speaker2'
   DeviceList:
-    Speaker1:
+    Output1:
       Type: 'Output' # Input or Output
-      ClientName: 'system' # host name of JACK device (default system)
-      Channel: 0
-      Record: False # record signal to/from device with jack_capture?
-    Speaker2:
-      Type: 'Output'
-      Channel: 1
-      Record: False
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      ChannelLabels:
+        Speaker1: 0
+        Speaker2: 1
     Microphone1:
       Type: 'Input'
-      ClientName: 'system'
-      PortName: 'capture_1'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
+      BufferSize: 1024 
       Record: True
-    Microphone2:
-      Type: 'Input'
-      ClientName: 'system'
-      PortName: 'capture_2'
-      Record: True
-
+      FilenameHeader: ''

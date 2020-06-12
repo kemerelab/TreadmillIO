@@ -65,15 +65,21 @@ AuditoryStimuli:
       Device: 'Speaker1' # or single device, or list of devices
 
   DeviceList:
-    Speaker1:
+    Output1:
       Type: 'Output' # Input or Output
-      Channel: 1
-      Record: False # record signal to/from device with jack_capture?
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      ChannelLabels:
+        Speaker1: 1
     Microphone1:
       Type: 'Input'
-      ClientName: 'system'
-      PortName: 'capture_1'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
+      BufferSize: 1024 
       Record: True
+      FilenameHeader: ''
+
 
 
 RewardZones:
