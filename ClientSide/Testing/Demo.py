@@ -1,6 +1,7 @@
 import serial
 import argparse
 import yaml
+import time
 
 # Command-line arguments
 parser = argparse.ArgumentParser(description='Demo a task by manually changing GPIO pins.')
@@ -35,9 +36,15 @@ Interface = serial.Serial(args.serial_port,
 # Main loop
 while (True):
     # Wait for input
-    print('Enter pin label and value (0 or 1).')
-    label, val = input().split(' ')
-    val = int(val)
+    print('Enter pin label and value: <pin_label> <0, 1> (<time ms>)')
+    p = input().split(' ')
+    assert len(p) in [2, 3]
+    label = p[0]
+    val = int(p[1])
+    if len(p) == 3:
+        duration = float(p[2])
+    else:
+        duration = -1
     if val not in [0, 1]:
         raise ValueError('Value must be 0 or 1.')
     elif label not in gpio:
@@ -45,18 +52,21 @@ while (True):
 
     # Create serial message
     msg = b'\xA9'
-    print(msg)
     if gpio[label]['Mirror']:
         msg += b'M'
     else:
         msg += b'D'
     msg += gpio[label]['Number'].to_bytes(1, byteorder='big',signed=True)
     msg += val.to_bytes(1, byteorder='big',signed=True)
-    print(msg)
 
     # Send message
     n = Interface.write(msg)
-
-    print('Set pin {} to {}.'.format(label, val))
-
-
+    
+    # Set duration if specified
+    t = time.time()
+    if duration >= 0.0:
+        time.sleep(duration/1000.0)
+        n = Interface.write(msg[:-1] + ((val+1)%2).to_bytes(1, byteorder='big', signed=True))
+        print('Set pin {} to {} for {} ms.'.format(label, val, duration))      
+    else:
+        print('Set pin {} to {}.'.format(label, val))
