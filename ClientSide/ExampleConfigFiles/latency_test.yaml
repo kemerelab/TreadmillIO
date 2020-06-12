@@ -19,6 +19,8 @@ Preferences:
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
+  AutoLogFileDirectory: True
+  #LogFileDirectory: 'Something/Something'
 
 GPIO: # A list of GPIO pins used in the task
   PulsePin:
@@ -39,7 +41,7 @@ Maze:
 
 AuditoryStimuli:
   AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
-
+  
   StimuliList:
     TestBeep: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
@@ -49,15 +51,21 @@ AuditoryStimuli:
       Device: 'Speaker1' # or single device, or list of devices
 
   DeviceList:
-    Speaker1:
+    Output1:
       Type: 'Output' # Input or Output
-      Channel: 1
+      HWDevice: 'hw:1,0'
+      NChannels: 2
+      ChannelLabels:
+        Speaker1: 1
       Record: False # record signal to/from device with jack_capture?
     Microphone1:
       Type: 'Input'
-      ClientName: 'system'
-      PortName: 'capture_1'
+      HWDevice: 'hw:1,0'
+      NChannels: 2
+      SamplingRate: 48000, # I'd like to autodetect from playback, but this would require communication between processes
+      BufferSize: 1024, 
       Record: True
+      FilenameHeader: ''
 
 
 StateMachine:

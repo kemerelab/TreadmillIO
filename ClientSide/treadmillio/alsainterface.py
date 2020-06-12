@@ -15,15 +15,28 @@ import yaml
 from multiprocessing import Process, Pipe
 import time
 import pickle
+import soundfile
 
 #from profilehooks import profile
 
-
+# Default parameters
 DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
-                         'Channel': 0}
+                         'HWDevice': '', # e.g., 'CARD=SoundCard,DEV=0'
+                         'NChannels': 2,
+                         'DType': 'int16',
+                         'BufferSize': 16, 
+                         'ChannelLabels': {'Default1': 0, 'Default2': 1}}
 
-DEFAULT_BUFFER_SIZE = 16
-DEFAULT_DTYPE = 'int16'
+DEFAULT_INPUT_DEVICE = {'Type': 'Input',
+                        'HWDevice': '',
+                        'NChannels': 2,
+                        'SamplingRate': 96000,
+                        'DType': 'int16',
+                        'BufferSize': 1024, 
+                        'FilenameHeader': '',
+                        'Record': True}
+
+
 ILLEGAL_STIMULUS_NAMES = ['StopMessage']
 
 class Stimulus():
@@ -69,22 +82,17 @@ class Stimulus():
         self._gain = gain
 
 class ALSAPlaybackSystem():
-    def __init__(self, config, device, control_pipe):
+    def __init__(self, dev_name, config, file_root, control_pipe):
         self.running = False
 
         self.control_pipe = control_pipe
 
-        file_root = config.get('AudioFileDirectory', None)
-        buffer_size = config.get('BufferSize', DEFAULT_BUFFER_SIZE)
-        dtype = config.get('DType', DEFAULT_DTYPE)
+        buffer_size = config['DeviceList'][dev_name].get('BufferSize', DEFAULT_OUTPUT_DEVICE['BufferSize'])
+        dtype = config['DeviceList'][dev_name].get('DType', DEFAULT_OUTPUT_DEVICE['DType'])
+        device = config['DeviceList'][dev_name].get('HWDevice', DEFAULT_OUTPUT_DEVICE['HWDevice'])
+        channel_labels = config['DeviceList'][dev_name].get('ChannelLabels', DEFAULT_OUTPUT_DEVICE['ChannelLabels'])
+        num_channels = config['DeviceList'][dev_name].get('NChannels', DEFAULT_OUTPUT_DEVICE['NChannels'])
 
-        DeviceList = config.get('DeviceList', {'Default': DEFAULT_OUTPUT_DEVICE})
-
-        self._devices = {}
-        for device_name, dev in DeviceList.items():
-            if dev['Type'] == 'Output':
-                print('Adding device {}...'.format(device_name))
-                self._devices[device_name] = dev['Channel']
 
         # Set up stimuli with default values
         StimuliList = config['StimuliList']
@@ -112,11 +120,14 @@ class ALSAPlaybackSystem():
                 raise(ValueError('{} is an illegal name for a stimulus.'.format(stimulus_name)))
 
             print('Adding stimulus {}...'.format(stimulus_name))
-            channel = self._devices[stimulus.get('Device', 'Default')]
-            gain = stimulus.get('BaselineGain', 0)
-            filename = os.path.join(file_root, stimulus['Filename'])
-            self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain)
-            k = k + 1
+            if stimulus.get('Device', 'Default1') in channel_labels:
+                channel = channel_labels[stimulus.get('Device', 'Default1')]
+                gain = stimulus.get('BaselineGain', 0)
+                filename = os.path.join(file_root, stimulus['Filename'])
+                self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain)
+                k = k + 1
+            else:
+                print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
 
         # Check to make sure all the sampling rates came out the same
         self.fs = set([stim.fs for _, stim in self.stimuli.items()])
@@ -137,7 +148,7 @@ class ALSAPlaybackSystem():
 
         # Open alsa device
         self.adevice = alsaaudio.PCM(device=device)
-        self.adevice.setchannels(2) # We'll always present stereo audio
+        self.adevice.setchannels(num_channels) # We'll always present stereo audio
         self.adevice.setrate(self.fs)
         if dtype == 'int16':
             self.adevice.setformat(alsaaudio.PCM_FORMAT_S16_LE)
@@ -185,5 +196,58 @@ class ALSAPlaybackSystem():
 
         if self.running == False:
             print('SIGINT flag changed.')
+
+class ALSARecordSystem():
+    def __init__(self, dev_name, config, log_directory=None):
+        self.running = False
+
+        buffer_size = config.get('BufferSize', DEFAULT_INPUT_DEVICE['BufferSize'])
+        dtype = config.get('DType', DEFAULT_INPUT_DEVICE['DType'])
+        device = config.get('HWDevice', DEFAULT_INPUT_DEVICE['HWDevice'])
+        self.fs = config.get('HWDevice', DEFAULT_INPUT_DEVICE['SamplingRate'])
+        self.channels = config.get('HWDevice', DEFAULT_INPUT_DEVICE['NChannels'])
+
+        # Open alsa device
+        self.adevice = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, device=device)
+
+        self.adevice.setchannels(self.channels) # We'll always record stereo audio TODO: support many channels
+        self.adevice.setrate(self.fs)
+        if dtype == 'int16':
+            self.adevice.setformat(alsaaudio.PCM_FORMAT_S16_LE)
+        else:
+            raise(ValueError("dtypes other than 'int16' not currently supported."))
+
+        self.adevice.setperiodsize(buffer_size)
+
+        self.in_buf = np.zeros((buffer_size, self.channels), dtype='int16', order='C')
+
+        self.adevice.enable_timestamps()
+        print('\nALSA record configuration\n')
+        self.adevice.dumpinfo()
+        print('\n\n')
+
+        self.logfilename = os.path.join(log_directory, 'microphone.wav.log')
+        self.soundfilename = os.path.join(log_directory, 'microphone.wav')
+        ######
+
+    def __del__(self):
+        self.adevice.close()
+
+    def record(self):
+        print(time.time())
+        self.adevice.start_timestamps()
+        with open(self.logfilename, 'w') as logfile, \
+            soundfile.SoundFile(self.soundfilename, 'w', self.fs, self.channels, 'PCM_16') as soundfile:
+            print('Timestamps for soundfile frames. Each record is [nsamps, time], where time is CLOCK_MONOTONIC.\n', file=logfile)
+            self.running = True
+            while self.running:
+                nsamp = self.adevice.read(self.in_buf)
+                t = self.adevice.gettimestamp()
+                soundfile.write(self.in_buf[:nsamp,:])
+                print('{}, {}\n'.format(nsamp, t), file=logfile)
+
+            if self.running == False:
+                print('SIGINT flag changed.')
+
 
 

@@ -9,49 +9,54 @@ import signal
 from multiprocessing import Process, Pipe, Value
 import pickle
 
-from .alsainterface import ALSAPlaybackSystem
+from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
 
 
 import cProfile
 
-# Default parameters
-DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
-                         'ClientName': 'system',
-                         'Channel': 1,
-                        #  'PortName': 'playback_1',
-                        #  'OscPort': 12345,
-                        #  'MinimixerChannel': 'left',
-                         'Record': False}
-
-DEFAULT_INPUT_DEVICE = {'Type': 'Input',
-                        'Channel': 1, 
-                        # 'ClientName': 'system',
-                        # 'PortName': 'capture_1',
-                        'Record': True}
 
 
 def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
 
-def run_audio_process(config, device, control_pipe):
-    sound_system = ALSAPlaybackSystem(config, device, control_pipe)
+def run_audio_playback_process(device_name, config, file_dir, control_pipe):
+    playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe)
     try:
-        # cProfile.runctx('sound_system.play()', globals(), locals(), "results.prof") # useful for debugging
-        sound_system.play()
+        # cProfile.runctx('playback_system.play()', globals(), locals(), "results.prof") # useful for debugging
+        playback_system.play()
     except KeyboardInterrupt:
         print('Caught SIGINT in ALSA process')
-        sound_system.running = False
+        playback_system.running = False
+
+def run_audio_record_process(device_name, config, log_directory):
+    record_system = ALSARecordSystem(device_name, config, log_directory)
+    try:
+        record_system.record()
+    except KeyboardInterrupt:
+        print('Caught SIGINT in ALSA process')
+        record_system.running = False
 
 
 class SoundStimulusController():
 
-    def __init__(self, sound_config, playback_device, track_length=None, verbose=0):
+    def __init__(self, sound_config, playback_device, track_length=None, log_directory=None, verbose=0):
 
-        p_from_main, self.p_alsa = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from p_from_main
-        
-        self._audio_process = Process(target=run_audio_process, args=(sound_config, playback_device, p_from_main))
-        self._audio_process.daemon = True
-        self._audio_process.start()     # Launch the sound process
+        # TODO: Handle pipes for multiple audio devices
+        if 'DeviceList' in sound_config:
+            for dev_name, dev in sound_config['DeviceList'].items():
+                if dev['Type'] == 'Output':
+                    _playback_read_pipe, self.alsa_playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
+                    self._audio_playback_process = Process(target=run_audio_playback_process, args=(dev_name, sound_config, sound_config['AudioFileDirectory'], _playback_read_pipe))
+                    self._audio_playback_process.daemon = True
+                    self._audio_playback_process.start()     # Launch the sound process
+
+        if 'DeviceList' in sound_config:
+            for dev_name, dev in sound_config['DeviceList'].items():
+                if dev['Type'] == 'Input':
+                    self._record_playback_process = Process(target=run_audio_record_process, args=(dev_name, dev, log_directory))
+                    self._record_playback_process.daemon = True
+                    self._record_playback_process.start()     # Launch the sound process
+
 
         # Get stimuli parameters
         StimuliList = sound_config['StimuliList']
@@ -82,12 +87,12 @@ class SoundStimulusController():
     def add_stimulus(self, stimulus_name, stimulus, track_length=None, verbose=0):
         # Add to type-specific mapping
         if stimulus['Type'] == 'Background':
-            new_stimulus = SoundStimulus(stimulus_name, stimulus, self.p_alsa, verbose)
+            new_stimulus = SoundStimulus(stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.BackgroundSounds[stimulus_name] = new_stimulus
             new_stimulus.change_gain(new_stimulus.baseline_gain)
             #visualization.add_zone_position(0, VirtualTrackLength, fillcolor=stimulus['Color'], width=0.5, alpha=0.75)
         elif stimulus['Type'] == 'Beep':
-            new_stimulus = BeepSound(stimulus_name, stimulus, self.p_alsa, verbose)
+            new_stimulus = BeepSound(stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.Beeps[stimulus_name] = new_stimulus
         elif stimulus['Type'] == 'Localized':
             if not track_length:
@@ -95,7 +100,7 @@ class SoundStimulusController():
             # visualization.add_zone_position(stimulus['CenterPosition'] - stimulus['Modulation']['Width']/2, 
             #                     stimulus['CenterPosition'] + stimulus['Modulation']['Width']/2, 
             #                     fillcolor=stimulus['Color'])
-            new_stimulus = LocalizedSound(track_length, stimulus_name, stimulus, self.p_alsa, verbose)
+            new_stimulus = LocalizedSound(track_length, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
         else:
             raise ValueError('Unknown stimulus type \'{}\'.'.format(stimulus['Type']))
@@ -126,7 +131,7 @@ class SoundStimulusController():
             if new_beep_value is not None:
                 update_dict[beep.name] = db2lin(new_beep_value)
         if update_dict:
-            self.p_alsa.send_bytes(pickle.dumps(update_dict)) # update all at once!
+            self.alsa_playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
     def update_localized(self, pos):
         update_dict = {}
@@ -135,7 +140,7 @@ class SoundStimulusController():
             if pos_gain is not None:
                 update_dict[sound.name] =  db2lin(pos_gain)
         if update_dict:
-            self.p_alsa.send_bytes(pickle.dumps(update_dict)) # update all at once!
+            self.alsa_playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
     def update_stimulus(self, stimulus, value):
         # TODO: error checking
@@ -160,16 +165,17 @@ class SoundStimulusController():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        print('SoundStimulController exiting. Waiting for ALSA process to join.')
+        print('SoundStimulController exiting. Waiting for ALSA processes to join.')
         # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
-        #self.p_alsa.send_bytes(pickle.dumps({'StopMessage': True}))
-        self._audio_process.join()
+        #self.alsa_playback_pipe.send_bytes(pickle.dumps({'StopMessage': True}))
+        self._audio_playback_process.join()
+        self._audio_record_process.join()
 
 
 class SoundStimulus():
-    def __init__(self, stimulus_name, stimulus_params, p_alsa, verbose):
+    def __init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
         self.name = stimulus_name
-        self.p_alsa = p_alsa
+        self.alsa_playback_pipe = alsa_playback_pipe
 
         # Gain parameters
         if 'BaselineGain' in stimulus_params:
@@ -184,25 +190,25 @@ class SoundStimulus():
 
         # Set gain prior to playing sound
         self.gain = self.off_gain # NOTE: Is it easier to have sounds off initially?
-        self.p_alsa.send_bytes(pickle.dumps({self.name: db2lin(self.gain)}))
+        self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: db2lin(self.gain)}))
 
         self.device = stimulus_params['Device']
         self.verbose = verbose
 
     def change_gain(self, gain):
         if gain != self.gain:
-            self.p_alsa.send_bytes(pickle.dumps({self.name: db2lin(gain)}))
+            self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: db2lin(gain)}))
             self.gain = gain
 
     def change_gain_raw(self, gain):
         if gain != self.gain:
-            self.p_alsa.send_bytes(pickle.dumps({self.name: gain}))
+            self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: gain}))
             self.gain = gain
 
 
 class LocalizedSound(SoundStimulus):
-    def __init__(self, track_length, stimulus_name, stimulus_params, p_alsa, verbose):
-        SoundStimulus.__init__(self, stimulus_name, stimulus_params, p_alsa, verbose)
+    def __init__(self, track_length, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
 
         # TODO check that these are all set. I need to know my name in order to give
         #  a meaningful warning, though.
@@ -240,8 +246,8 @@ class LocalizedSound(SoundStimulus):
 
 
 class BeepSound(SoundStimulus):
-    def __init__(self, stimulus_name, stimulus_params, p_alsa, verbose):
-        SoundStimulus.__init__(self, stimulus_name, stimulus_params, p_alsa, verbose)
+    def __init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
         if 'Duration' in stimulus_params:
             self.duration = stimulus_params['Duration']
         else:
