@@ -6,6 +6,8 @@ import os
 import warnings
 import socket
 import signal
+import pickle
+from .viewer import launch_viewer
 
 @jack.set_error_function
 def error(msg):
@@ -106,6 +108,13 @@ class SoundStimulusController():
             device = self.devices[stimulus.get('Device', 'Default')]
             self.add_stimulus(stimulus_name, stimulus, file_root, device, track_length, verbose)
 
+        # Add viewer
+        if sound_config.get('Viewer', False):
+            viewer_dict = {name: s.gain for name, s in self._Stimuli.items()}
+            viewer_conn, p_viewer = launch_viewer('SoundStimulus', stimuli=viewer_dict)
+            for _, sound in self._Stimuli.items():
+                sound.connect_viewer(viewer_conn)
+
     def add_device(self, device_name, device, verbose=0):
         if 'Type' not in device:
             raise ValueError('Device type must be specified for device \'{}\'.'.format(device_name))
@@ -124,6 +133,7 @@ class SoundStimulusController():
 
     def add_stimulus(self, stimulus_name, stimulus, file_root, device, track_length=None, verbose=0):
         # Add to type-specific mapping
+        stimulus['Name'] = stimulus_name
         if stimulus['Type'] == 'Background':
             new_stimulus = SoundStimulus(stimulus, file_root, device, verbose)
             self.BackgroundSounds[stimulus_name] = new_stimulus
@@ -148,7 +158,7 @@ class SoundStimulusController():
             raise ValueError('Multiple stimuli cannot share the same name.')
         else:
             self._Stimuli[stimulus_name] = new_stimulus
-        
+
     def get_stimulus(self, stimulus_name):
         # TODO: Is this the best to map same objects?
         if stimulus_name in self._Stimuli:
@@ -393,8 +403,8 @@ class SoundStimulus():
             self.off_gain = -90.0 
 
         # File settings
+        self.name = stimulus_params['Name']
         filename = stimulus_params['Filename']
-        self.name = filename
         if file_root is not None:
             filename = os.path.join(file_root, filename)
         if not os.path.isfile(filename):
@@ -464,12 +474,22 @@ class SoundStimulus():
         self.channel = channel
         self.verbose = verbose
 
+        # Pipe for updating viewer
+        self._viewer_conn = None
+
         time.sleep(0.25)
+
+    def connect_viewer(self, pipe):
+        self._viewer_conn = pipe
 
     def change_gain(self, gain):
         if gain != self.gain:
             self.oscC.send_message(b'/mixer/channel/set_gain',[int(self.inputPort), gain])
             self.gain = gain
+
+        if self._viewer_conn:
+            update_dict = {self.name: gain, 'priority': 1}
+            self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
     def close_processes(self, timeout=10.0):
         if self.p_jackplay:

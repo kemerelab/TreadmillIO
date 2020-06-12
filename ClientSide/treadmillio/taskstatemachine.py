@@ -4,8 +4,9 @@ from itertools import cycle
 import warnings
 import zmq
 import random
-
+import pickle
 import pygraphviz
+from .viewer import launch_viewer
 
 class StateTransitionCondition:
     def __init__(self, label, state_config, io_interface):
@@ -103,6 +104,9 @@ class TaskState:
         else:
             raise(ValueError('Parsing state machine. State {} needs a next state.'.format(label)))
 
+        # Launch viewer when current state?
+        self.render_viewer = state_config.get('Viewer', False)
+        self._p_viewer = None
 
     def get_graph_label(self):
         return '<font point-size="18">{}: <b>{}</b></font>'.format(self.Type, self.label)
@@ -147,6 +151,9 @@ class TaskState:
             return self.next_state
 
     def on_entrance(self, logger=None):
+        if self.render_viewer and self._p_viewer is None:
+            self._viewer_conn, self._p_viewer = launch_viewer(self.Type)
+
         if isinstance(self.next_state, dict):
             for state_name, condition in self.next_state.items():
                 if (condition['ConditionType'] == 'ElapsedTime'):
@@ -586,10 +593,17 @@ class PatchState(TaskState):
             self.Model.reset(self.io_interface.MasterTime)
             self.NewPatch = False
             self.R_harvest = 0.0
+            if self.render_viewer:
+                update_dict = {'reset': None, 'priority': 1}
+                self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
     def on_remain(self, logger=None):
         # Update patch statistics, i.e. if reward is available
         self.Model.update(self.io_interface.MasterTime)
+        if self.render_viewer:
+            update_dict = {'reward': [self.Model.t, self.Model.available_reward],
+                           'priority': 0}
+            self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
