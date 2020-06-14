@@ -15,7 +15,7 @@
 # That implies a latency of 7 + 2 = 11 ms from when the pulse is initially generated.
 
 Preferences:
-  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  HeartBeat: 10000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
@@ -57,7 +57,6 @@ AuditoryStimuli:
       NChannels: 2
       ChannelLabels:
         Speaker1: 1
-      Record: False # record signal to/from device with jack_capture?
     Microphone1:
       Type: 'Input'
       HWDevice: 'hw:CARD=SoundCard,DEV=0'
@@ -100,7 +99,7 @@ StateMachine:
       NextState: 
         GPIO_Off:
           ConditionType: 'ElapsedTime'
-          Duration: 500
+          Duration: 10
           Priority: 1
         SignalGPIO:
           ConditionType: 'GPIO'
@@ -112,6 +111,12 @@ StateMachine:
       Params:
         Pin: 'ResponsePin'
         Value: 1
+      NextState: 'LowerPulse'
+    LowerPulse:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'PulsePin'
+        Value: 0
       NextState: 'PlaySound'
     PlaySound:
       Type: 'SetSoundState'

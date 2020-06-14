@@ -34,8 +34,7 @@ DEFAULT_INPUT_DEVICE = {'Type': 'Input',
                         'SamplingRate': 96000,
                         'DType': 'int16',
                         'BufferSize': 1024, 
-                        'FilenameHeader': '',
-                        'Record': True}
+                        'FilenameHeader': ''}
 
 
 ILLEGAL_STIMULUS_NAMES = ['StopMessage']
@@ -88,26 +87,16 @@ class ALSAPlaybackSystem():
 
         self.control_pipe = control_pipe
 
-        buffer_size = config['DeviceList'][dev_name].get('BufferSize', DEFAULT_OUTPUT_DEVICE['BufferSize'])
-        dtype = config['DeviceList'][dev_name].get('DType', DEFAULT_OUTPUT_DEVICE['DType'])
-        device = config['DeviceList'][dev_name].get('HWDevice', DEFAULT_OUTPUT_DEVICE['HWDevice'])
-        channel_labels = config['DeviceList'][dev_name].get('ChannelLabels', DEFAULT_OUTPUT_DEVICE['ChannelLabels'])
-        num_channels = config['DeviceList'][dev_name].get('NChannels', DEFAULT_OUTPUT_DEVICE['NChannels'])
+        config['DeviceList'][dev_name] = normalize_output_device(config['DeviceList'][dev_name])
 
+        buffer_size = config['DeviceList'][dev_name]['BufferSize']
+        dtype = config['DeviceList'][dev_name]['DType']
+        device = config['DeviceList'][dev_name]['HWDevice']
+        channel_labels = config['DeviceList'][dev_name]['ChannelLabels']
+        num_channels = config['DeviceList'][dev_name]['NChannels']
 
         # Set up stimuli with default values
-        StimuliList = config['StimuliList']
-        if 'Defaults' in config:
-            print('SoundStimulus: setting defaults.')
-            for stimulus_name, stimulus in StimuliList.items(): 
-                print(' - ',stimulus_name)
-                for key, config_item in config['Defaults'].items():
-                    if key not in stimulus:
-                        stimulus[key] = config_item
-                    elif isinstance(config_item, dict):
-                        for subkey, sub_config_item in config_item.items():
-                            if subkey not in stimulus[key]:
-                                stimulus[key][subkey] = sub_config_item
+        StimuliList = look_for_and_add_stimulus_defaults(config)
 
         # Begin by loading sound files
         self.stimuli = {}
@@ -208,11 +197,13 @@ class ALSARecordSystem():
             warnings.warn("Recording microphone input to cwd because log file wasn't specified.")
             log_directory = os.getcwd()
 
-        buffer_size = config.get('BufferSize', DEFAULT_INPUT_DEVICE['BufferSize'])
-        dtype = config.get('DType', DEFAULT_INPUT_DEVICE['DType'])
-        device = config.get('HWDevice', DEFAULT_INPUT_DEVICE['HWDevice'])
-        self.fs = config.get('SamplingRate', DEFAULT_INPUT_DEVICE['SamplingRate'])
-        self.channels = config.get('NChannels', DEFAULT_INPUT_DEVICE['NChannels'])
+        config = normalize_input_device(config)
+
+        self.buffer_size = config['BufferSize']
+        dtype = config['DType']
+        device = config['HWDevice']
+        self.fs = config['SamplingRate']
+        self.channels = config['NChannels']
 
         # Open alsa device
         self.adevice = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, device=device)
@@ -224,9 +215,9 @@ class ALSARecordSystem():
         else:
             raise(ValueError("dtypes other than 'int16' not currently supported."))
 
-        self.adevice.setperiodsize(buffer_size)
+        self.adevice.setperiodsize(self.buffer_size)
 
-        self.in_buf = np.zeros((buffer_size*4, self.channels), dtype='int16', order='C')
+        self.in_buf = np.zeros((self.buffer_size*4, self.channels), dtype='int16', order='C')
 
         self.adevice.enable_timestamps()
 
@@ -253,10 +244,47 @@ class ALSARecordSystem():
                 nsamp = self.adevice.read_into(self.in_buf)
                 t = self.adevice.gettimestamp()
                 sf.write(self.in_buf[:nsamp,:])
-                print('{}, {}\n'.format(nsamp, t), file=logfile)
+                print('{}, {}'.format(nsamp, t), file=logfile)
+                if nsamp < self.buffer_size:
+                    print('ALSA Read buffer underrun.')
+
 
             if self.running == False:
                 print('SIGINT flag changed.')
 
 
 
+def normalize_output_device(config):
+    config['BufferSize'] = config.get('BufferSize', DEFAULT_OUTPUT_DEVICE['BufferSize'])
+    config['DType'] = config.get('DType', DEFAULT_OUTPUT_DEVICE['DType'])
+    config['Device'] = config.get('HWDevice', DEFAULT_OUTPUT_DEVICE['HWDevice'])
+    config['ChannelLabels'] = config.get('ChannelLabels', DEFAULT_OUTPUT_DEVICE['ChannelLabels'])
+    config['NChannels'] = config.get('NChannels', DEFAULT_OUTPUT_DEVICE['NChannels'])
+
+    return config
+
+
+def normalize_input_device(config):
+    config['BufferSize'] = config.get('BufferSize', DEFAULT_INPUT_DEVICE['BufferSize'])
+    config['DType'] = config.get('DType', DEFAULT_INPUT_DEVICE['DType'])
+    config['Device'] = config.get('HWDevice', DEFAULT_INPUT_DEVICE['HWDevice'])
+    config['SamplingRate'] = config.get('SamplingRate', DEFAULT_INPUT_DEVICE['SamplingRate'])
+    config['NChannels'] = config.get('NChannels', DEFAULT_INPUT_DEVICE['NChannels'])
+
+    return config
+
+
+def look_for_and_add_stimulus_defaults(config):
+    if 'Defaults' in config:
+        print('SoundStimulus: setting defaults.')
+        for stimulus_name, stimulus in config['StimuliList'].items(): 
+            print(' - ',stimulus_name)
+            for key, config_item in config['Defaults'].items():
+                if key not in stimulus:
+                    stimulus[key] = config_item
+                elif isinstance(config_item, dict):
+                    for subkey, sub_config_item in config_item.items():
+                        if subkey not in stimulus[key]:
+                            stimulus[key][subkey] = sub_config_item
+
+    return config['StimuliList']

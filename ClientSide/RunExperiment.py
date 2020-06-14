@@ -29,12 +29,6 @@ from contextlib import ExitStack
 NamedVersion = '1.0'
 Profiling = True
 
-import git
-repo = git.Repo(search_parent_directories=True)
-
-GitCommit = repo.head.object.hexsha
-GitChangedFiles = [fn.a_path for fn in repo.index.diff(None)]
-GitPatch = [fn.diff for fn in repo.index.diff(None, create_patch=True)]
 
 ### Maybe should add argcomplete for this program?
 
@@ -61,44 +55,49 @@ if args.param_file == 'defaults.yaml':
 with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
-    # ------------------- Setup logging. ------------------------------------------------------------------
-    DoLogCommands = True
-    if 'LogCommands' in Config['Preferences']:
-        DoLogCommands = Config['Preferences']['LogCommands']
+# ------------------- Validate config file-------------------------------------------------------------
+from treadmillio.soundstimulus import validate_sound_config
 
-    if DoLogCommands:
-        auto_log_directory = Config['Preferences'].get('AutoLogDirectory', True) if 'Preferences' in Config else True
+validate_sound_config(Config['AuditoryStimuli'])
 
-        log_directory = Config['Preferences'].get('LogDirectory', None) if 'Preferences' in Config else None
-        if log_directory is not None and args.output_dir is not None:
-            warnings.warn('The configuration file specifies {} for logging, '
-                    'but command line has {}. Using command line!\n'.format(log_directory, args.output_dir))
-            log_directory = args.output_dir
-        elif auto_log_directory:
-            now = datetime.datetime.now()
-            log_directory = '{}{}'.format('ExperimentLog', now.strftime("%Y-%m-%d_%H%M"))
-        else:
-            raise(ValueError('You did not specify a directory for experiment logs, and AutoLogDirectory is False.'))
+# ------------------- Setup logging. ------------------------------------------------------------------
+DoLogCommands = True
+if 'LogCommands' in Config['Preferences']:
+    DoLogCommands = Config['Preferences']['LogCommands']
 
-        if not os.path.isabs(log_directory):
-            log_directory = os.path.join(os.getcwd(), log_directory)
+if DoLogCommands:
+    auto_log_directory = Config['Preferences'].get('AutoLogDirectory', True) if 'Preferences' in Config else True
 
-        orig_log_directory = log_directory
-        k=1
-        while os.path.exists(log_directory):
-            k = k + 1
-            log_directory = orig_log_directory + '_' + str(k)
-
-        if log_directory != orig_log_directory:
-            warnings.warn('Specified experiment logs directory {} exists, using {}'.format(orig_log_directory, log_directory))
-
-        print('Creating log directory: {}\n'.format(log_directory))
-        os.makedirs(log_directory)
-
+    log_directory = Config['Preferences'].get('LogDirectory', None) if 'Preferences' in Config else None
+    if log_directory is not None and args.output_dir is not None:
+        warnings.warn('The configuration file specifies {} for logging, '
+                'but command line has {}. Using command line!\n'.format(log_directory, args.output_dir))
+        log_directory = args.output_dir
+    elif auto_log_directory:
+        now = datetime.datetime.now()
+        log_directory = '{}{}'.format('ExperimentLog', now.strftime("%Y-%m-%d_%H%M"))
     else:
-        print('#'*80, '\n')
-        print('Warning!!! Not logging!!!!')
-        print('#'*80, '\n')
+        raise(ValueError('You did not specify a directory for experiment logs, and AutoLogDirectory is False.'))
+
+    if not os.path.isabs(log_directory):
+        log_directory = os.path.join(os.getcwd(), log_directory)
+
+    orig_log_directory = log_directory
+    k=1
+    while os.path.exists(log_directory):
+        k = k + 1
+        log_directory = orig_log_directory + '_' + str(k)
+
+    if log_directory != orig_log_directory:
+        warnings.warn('Specified experiment logs directory {} exists, using {}'.format(orig_log_directory, log_directory))
+
+    print('Creating log directory: {}\n'.format(log_directory))
+    os.makedirs(log_directory)
+
+else:
+    print('#'*80, '\n')
+    print('Warning!!! Not logging!!!!')
+    print('#'*80, '\n')
 
 
 EnableSound = False
@@ -176,6 +175,14 @@ with ExitStack() as stack:
     if DoLogCommands:
         # -------------------------- Set up all the different log files -------------------------------------
         # Log git diffs for provenance
+
+        import git
+        repo = git.Repo(search_parent_directories=True)
+
+        GitCommit = repo.head.object.hexsha
+        GitChangedFiles = [fn.a_path for fn in repo.index.diff(None)]
+        GitPatch = [fn.diff for fn in repo.index.diff(None, create_patch=True)]
+
         with open(os.path.join(log_directory, 'ExperimentCodeDiffs.txt'), 'w') as git_file:
             print(f'   Git Commit: {GitCommit}',file=git_file)
             if GitChangedFiles:

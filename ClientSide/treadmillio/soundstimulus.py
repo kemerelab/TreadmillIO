@@ -11,6 +11,7 @@ import pickle
 
 from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
 
+from .alsainterface import normalize_output_device, normalize_input_device, look_for_and_add_stimulus_defaults
 
 import cProfile
 
@@ -40,7 +41,6 @@ def run_audio_record_process(device_name, config, log_directory):
 
 
 class SoundStimulusController():
-
     def __init__(self, sound_config, track_length=None, log_directory=None, verbose=0):
 
         # TODO: Handle pipes for multiple audio devices
@@ -48,6 +48,7 @@ class SoundStimulusController():
         #       that sound stimuli specify devices that are in the device list
         #       otherwise, the process will be exit without the main program
         #       realizing it.
+
         if 'DeviceList' in sound_config:
             for dev_name, dev in sound_config['DeviceList'].items():
                 if dev['Type'] == 'Output':
@@ -65,18 +66,7 @@ class SoundStimulusController():
 
 
         # Get stimuli parameters
-        StimuliList = sound_config['StimuliList']
-        if 'Defaults' in sound_config:
-            print('SoundStimulus: setting defaults.')
-            for stimulus_name, stimulus in StimuliList.items(): 
-                print(' - ',stimulus_name)
-                for key, config_item in sound_config['Defaults'].items():
-                    if key not in stimulus:
-                        stimulus[key] = config_item
-                    elif isinstance(config_item, dict):
-                        for subkey, sub_config_item in config_item.items():
-                            if subkey not in stimulus[key]:
-                                stimulus[key][subkey] = sub_config_item
+        StimuliList = look_for_and_add_stimulus_defaults(sound_config)
 
         # Stimuli placeholders
         self.BackgroundSounds = {}
@@ -211,6 +201,12 @@ class SoundStimulus():
             self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: gain}))
             self.gain = gain
 
+    @classmethod
+    def valid(self, name, config):
+        if not ('Device' in config):
+            return False, ValueError('Config file processing error: {} is missing "Device" parameter.'.format(name))
+
+        return True, None
 
 class LocalizedSound(SoundStimulus):
     def __init__(self, track_length, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
@@ -250,6 +246,26 @@ class LocalizedSound(SoundStimulus):
         return new_gain
         #SoundStimulus.change_gain(self, new_gain)
 
+    @classmethod
+    def valid(self, name, config):
+        base_valid, error = super(LocalizedSound, cls).valid(config)
+
+        if not base_valid:
+            return False, error
+        if not ('CenterPosition' in config):
+            return False, ValueError('Config file processing error: {} is missing "CenterPosition" parameter.'.format(name))
+        if not ('Modulation' in config):
+            return False, ValueError('Config file processing error: {} is missing "Modulation" parameters.'.format(name))
+        if not ('Width' in config['Modulation']):
+            return False, ValueError('Config file processing error: {} is missing "Modulation" parameters.'.format(name))
+        if not ('Width' in config['Modulation']):
+            return False, ValueError('Config file processing error: {} is missing "Modulation: Width" parameter.'.format(name))
+        if not ('CutoffGain' in config['Modulation']):
+            return False, ValueError('Config file processing error: {} is missing "Modulation: CutoffGain" parameter.'.format(name))
+
+        return True, None
+
+
 
 class BeepSound(SoundStimulus):
     def __init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
@@ -278,3 +294,51 @@ class BeepSound(SoundStimulus):
                 # SoundStimulus.change_gain(self,self.off_gain)
                 return self.off_gain
         return None # if we didn't already return!
+
+    @classmethod
+    def valid(cls, config):
+        base_valid, error = super(BeepSound, cls).valid(config)
+        if not base_valid:
+            return False, error
+        if not ('Duration' in config):
+            return False, ValueError('Config file processing error: {} is missing "Duration" parameter.'.format(name))
+        return True, None
+
+
+
+
+def validate_sound_config(config):
+    # What do we want to test:
+    #   After we optionally specified defaults, SoundStimuli have all the proper settings
+    #   Device defaults set
+    #   SoundStimuli have a "Device" that matches DeviceList/Device/ChannelLabels/***
+
+    # First - normalize the Stimuli and Devices
+    OutputDevices = []
+    for dev_name, dev in config['DeviceList'].items():
+        if dev['Type'] == 'Output':
+            config['DeviceList'][dev_name] = normalize_output_device(config['DeviceList'][dev_name])
+            OutputDevices.extend(config['DeviceList'][dev_name]['ChannelLabels'].keys())
+        if dev['Type'] == 'Input':
+            config['DeviceList'][dev_name] = normalize_input_device(config['DeviceList'][dev_name])
+
+    config['StimuliList'] = look_for_and_add_stimulus_defaults(config)
+
+    for stim_name, stim in config['StimuliList'].items():
+        if stim['Type'] == 'Background':
+            valid, error = SoundStimulus.valid(stim_name, stim)
+        elif stim['Type'] == 'Localized':
+            valid, error = LocalizedSound.valid(stim_name, stim)
+        elif stim['Type'] == 'Beep':
+            valid, error = BeepSound.valid(stim_name, stim)
+        else:
+            raise(ValueError('Sound stimulus {} has an unknown stimulus type {}.'.format(stim_name, stim)))
+        if not valid:
+            raise(error)
+
+        if not stim['Device'] in OutputDevices:
+            raise(ValueError("Sound stimulus {} names a device ({}) that is not specified as the channel of a device.".format(stim_name, stim['Device'])))
+
+
+    
+
