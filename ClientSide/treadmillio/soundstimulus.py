@@ -20,8 +20,8 @@ import cProfile
 def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
 
-def run_audio_playback_process(device_name, config, file_dir, control_pipe):
-    playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe)
+def run_audio_playback_process(device_name, config, file_dir, control_pipe, log_directory):
+    playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)
     try:
         # cProfile.runctx('playback_system.play()', globals(), locals(), "results.prof") # useful for debugging
         print('Playback starting')
@@ -53,7 +53,8 @@ class SoundStimulusController():
             for dev_name, dev in sound_config['DeviceList'].items():
                 if dev['Type'] == 'Output':
                     _playback_read_pipe, self.alsa_playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
-                    self._audio_playback_process = Process(target=run_audio_playback_process, args=(dev_name, sound_config, sound_config['AudioFileDirectory'], _playback_read_pipe))
+                    self._audio_playback_process = Process(target=run_audio_playback_process, args=(dev_name, sound_config, 
+                                                sound_config['AudioFileDirectory'], _playback_read_pipe, log_directory))
                     self._audio_playback_process.daemon = True
                     self._audio_playback_process.start()     # Launch the sound process
 

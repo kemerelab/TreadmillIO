@@ -24,8 +24,9 @@ import warnings
 DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
                          'HWDevice': '', # e.g., 'CARD=SoundCard,DEV=0'
                          'NChannels': 2,
+                         'NPeriods': 4,
                          'DType': 'int16',
-                         'BufferSize': 16, 
+                         'BufferSize': 32, 
                          'ChannelLabels': {'Default1': 0, 'Default2': 1}}
 
 DEFAULT_INPUT_DEVICE = {'Type': 'Input',
@@ -39,8 +40,34 @@ DEFAULT_INPUT_DEVICE = {'Type': 'Input',
 
 ILLEGAL_STIMULUS_NAMES = ['StopMessage']
 
+def tukey_window(N, N_overlap=None):
+    # tukey_window(N, N_overlap=None) -> full_window, left_lobe_and_top, right_lobe
+    #
+    # The Tukey window is a commonly used window for granular synthesis.
+    # It's a cosine lobe with a flat top. For the sake of this code, our
+    # definition is a bit non-standard. For the equivalent of a Hanning
+    # window, the right setting is N_overlap=N. That's because we construct
+    # a window of size N+N_overlap.
+
+    if N_overlap == 0:
+        # rectangular window!
+        return np.ones(N), np.ones(N), None
+        
+    N2 = N + N_overlap
+    n = np.arange(0,N2,1)
+    L = (N2+1)
+    alpha = N_overlap * 2 / L # want alpha * L / 2 to be an integer
+    w = np.ones(N2)
+    w[:N_overlap] = 1/2 * (1 - np.cos(2*np.pi*n[:N_overlap]/(alpha * L)))
+    w[-N_overlap:] = 1/2 * (1 - np.cos(2*np.pi*(N2-n[-N_overlap:])/(alpha * L)))
+
+    w_prime = np.zeros(N)
+    w_prime[:N_overlap] = w[-N_overlap:]
+
+    return w, w[:-N_overlap], w_prime
+
 class Stimulus():
-    def __init__(self, filename, data_buffer, channel, buffer_len, gain_db):
+    def __init__(self, filename, data_buffer, channel, buffer_len, gain_db, window=None):
         self.fs, self.stimulus_buffer = scipy.io.wavfile.read(filename)
         # if self.stimulus_buffer.dtype != dtype:
         #     raise(ValueError('Specified dtype for {} is {} but file is actually {}'.format(
@@ -52,11 +79,24 @@ class Stimulus():
         #self.data = np.zeros((buffer_len,2), dtype=dtype, order='C')
         self.data = data_buffer # pre-initialized matrix (tensor actually) for easy summing
 
+        self.n_channels = data_buffer.shape[1]
+
         self.curpos = 0
         self.buffer_len = buffer_len
         self.stimulus_len = len(self.stimulus_buffer)
         self.channel = channel
         self._gain = np.power(10, gain_db/20)
+        self._current_gain = self._gain # current_gain will allow us to track changes
+
+        self._windowing = window is not None
+
+        if window is not None:
+            _, self._new_window, self._old_window = tukey_window(self.buffer_len, window)
+            self._new_window = np.transpose(np.tile(self._new_window, [self.n_channels, 1])) #
+            self._old_window = np.transpose(np.tile(self._old_window, [self.n_channels, 1]))
+            self._old_gain = np.zeros((buffer_len,self.n_channels)) # pre-allocate these
+            self._new_gain = np.zeros((buffer_len,self.n_channels)) # pre-allocate these
+            self._gain_profile = np.zeros((buffer_len,self.n_channels)) # pre-allocate these
     
     def get_nextbuf(self):
         remainder = self.curpos + self.buffer_len - self.stimulus_len
@@ -69,7 +109,14 @@ class Stimulus():
             self.data[:,self.channel] = self.stimulus_buffer[self.curpos:(self.curpos+self.buffer_len)]
             self.curpos += self.buffer_len
 
-        self.data[:] = self.data[:] * self._gain # make sure not to copy!
+        if (self._windowing) and (self._gain != self._current_gain):
+            self._old_gain[:] = self._old_window[:] * self._current_gain
+            self._new_gain[:] = self._new_window[:] * self._gain
+            self._gain_profile[:] = self._new_gain + self._old_gain
+            self._current_gain = self._gain
+            self.data[:] = self.data[:] * self._gain_profile
+        else:
+            self.data[:] = self.data[:] * self._gain # make sure not to copy!
         # we don't need to return anything because the caller has a view
         # to the memory that self.data is looking at
 
@@ -80,10 +127,17 @@ class Stimulus():
     @gain.setter
     def gain(self, gain):
         self._gain = gain
+        # print('Gain: {}'.format(20*np.log10(gain))) # TODO: Add this as debug info
 
 class ALSAPlaybackSystem():
-    def __init__(self, dev_name, config, file_root, control_pipe):
+    def __init__(self, dev_name, config, file_root, control_pipe, log_directory=None):
         self.running = False
+
+        if not log_directory:
+            warnings.warn("XRuns will be logged in cwd.")
+            log_directory = os.getcwd()
+
+        self.xrun_filename = os.path.join(log_directory, 'alsa_playback_xruns.txt')
 
         self.control_pipe = control_pipe
 
@@ -114,7 +168,7 @@ class ALSAPlaybackSystem():
                 channel = channel_labels[stimulus.get('Device', 'Default1')]
                 gain = stimulus.get('BaselineGain', 0)
                 filename = os.path.join(file_root, stimulus['Filename'])
-                self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain)
+                self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
                 k = k + 1
             else:
                 print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
@@ -162,28 +216,29 @@ class ALSAPlaybackSystem():
 
     def play(self):
         print(time.time())
-        self.running = True
-        while self.running:
-            for _, stim in self.stimuli.items():
-                stim.get_nextbuf()
-            self.out_buf[:] = self.data_buf.sum(axis=2).astype(dtype=self.out_buf.dtype, order='C')
-            res, xruns = self.adevice.write(self.out_buf)
-            if xruns != 0:
-                print('Xrun! {}'.format(xruns))
-                print(time.time())
+        with open(self.xrun_filename, 'w') as xrun_logfile:
+            self.running = True
+            while self.running:
+                for _, stim in self.stimuli.items():
+                    stim.get_nextbuf()
+                self.out_buf[:] = self.data_buf.sum(axis=2).astype(dtype=self.out_buf.dtype, order='C')
+                res, xruns = self.adevice.write(self.out_buf)
+                if xruns != 0:
+                    print('xrun in playback [{}] at {}'.format(xruns, time.clock(time.CLOCK_MONOTONIC)))
+                    print('xrun in playback [{}] at {}'.format(xruns, time.clock(time.CLOCK_MONOTONIC)), file=xrun_logfile)
 
-            while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
-                msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
-                commands = pickle.loads(msg)
-                # if 'StopMessage' in commands:
-                #     print('Got StopMessage in ALSA process.')
-                #     break;
-                try:
-                    for key, gain in commands.items():
-                        if key in self.stimuli:
-                            self.stimuli[key].gain = gain
-                except:
-                    print('Exception: ', commands)
+                while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
+                    msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
+                    commands = pickle.loads(msg)
+                    # if 'StopMessage' in commands:
+                    #     print('Got StopMessage in ALSA process.')
+                    #     break;
+                    try:
+                        for key, gain in commands.items():
+                            if key in self.stimuli:
+                                self.stimuli[key].gain = gain
+                    except:
+                        print('Exception: ', commands)
 
 
         if self.running == False:
@@ -196,6 +251,8 @@ class ALSARecordSystem():
         if not log_directory:
             warnings.warn("Recording microphone input to cwd because log file wasn't specified.")
             log_directory = os.getcwd()
+
+        self.xrun_filename = os.path.join(log_directory, 'alsa_record_xruns.txt')
 
         config = normalize_input_device(config)
 
@@ -236,8 +293,10 @@ class ALSARecordSystem():
 
     def record(self):
         print(time.time())
-        with open(self.logfilename, 'w') as logfile, \
-            soundfile.SoundFile(self.soundfilename, 'w', self.fs, self.channels, 'PCM_16') as sf:
+        with open(self.xrun_filename, 'w') as xrun_logfile, \
+                open(self.logfilename, 'w') as logfile, \
+                soundfile.SoundFile(self.soundfilename, 'w', self.fs, self.channels, 'PCM_16') as sf:
+
             print('Timestamps for soundfile frames. Each record is [nsamps, time], where time is CLOCK_MONOTONIC.\n', file=logfile)
             self.running = True
             while self.running:
@@ -247,6 +306,7 @@ class ALSARecordSystem():
                 print('{}, {}'.format(nsamp, t), file=logfile)
                 if nsamp < self.buffer_size:
                     print('ALSA Read buffer underrun.')
+                    print('buffer underrun {}'.format(t), file=xrun_logfile)
 
 
             if self.running == False:
