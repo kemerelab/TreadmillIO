@@ -224,8 +224,8 @@ class ALSAPlaybackSystem():
                 self.out_buf[:] = self.data_buf.sum(axis=2).astype(dtype=self.out_buf.dtype, order='C')
                 res, xruns = self.adevice.write(self.out_buf)
                 if xruns != 0:
-                    print('xrun in playback [{}] at {}'.format(xruns, time.clock(time.CLOCK_MONOTONIC)))
-                    print('xrun in playback [{}] at {}'.format(xruns, time.clock(time.CLOCK_MONOTONIC)), file=xrun_logfile)
+                    print('xrun in playback [{}] at {}'.format(xruns, time.monotonic()))
+                    print('xrun in playback [{}] at {}'.format(xruns, time.monotonic()), file=xrun_logfile)
 
                 while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
                     msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
