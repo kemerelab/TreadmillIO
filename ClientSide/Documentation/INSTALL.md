@@ -12,10 +12,9 @@ packages should be installed via `apt`:
 
 `git clone https://github.com/ckemere/pyalsaaudio`
 
-Install the dependency of `pyalsaaudio` and `alsa-utils` (which gives `aplay`
-and `alsamixer`)
+Install the dependency of `pyalsaaudio`
 
-`sudo apt install libasound2-dev alsa-utils`
+`sudo apt install libasound2-dev`
 
 In the `pyalsaaudio` installation directory run: `pip3 install -e .`
 The installation should conlcude without error.

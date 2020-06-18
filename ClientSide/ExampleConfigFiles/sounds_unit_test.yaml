@@ -43,7 +43,7 @@ StateMachine:
 
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
   StimuliList:
     RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
