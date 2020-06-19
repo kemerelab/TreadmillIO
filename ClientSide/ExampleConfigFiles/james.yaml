@@ -57,6 +57,7 @@ Maze:
   Type: 'StateMachine' # VR or physical
 
 StateMachine:
+  Viewer: True
   States:
     InitialState: # either patch available
       FirstState: True
@@ -119,6 +120,7 @@ StateMachine:
       NextState: 'InPatch2-Waiting'
     InPatch2-Waiting: # reward zone 2
       Type: 'Patch'
+      Viewer: True
       Params:
         ModelType: 'Exponential' # or stochastic models like Poisson, etc. 
         ModelParams: # list of params for specific model type
@@ -236,6 +238,7 @@ StateMachine:
           Pin: 3 #'Poke1'
           Value: False
           Priority: 2
+      Viewer: True
     InPatch1-Available: # play reward sound when reward available
       Type: 'SetSoundState'
       Params:
@@ -244,7 +247,7 @@ StateMachine:
         InPatch1-Reward: # dispense reward if lick
           ConditionType: 'GPIO'
           Pin: 5 #'Lick1'
-          Value: 'On'
+          Value: True
         Interpatch1: # leave patch
           # TODO: need to incorporate smoothing poke sensor
           ConditionType: 'GPIO'
@@ -267,6 +270,7 @@ StateMachine:
 
 AuditoryStimuli:
   AudioFileDirectory: '/home/james/Documents/Projects/behavior_system/TreadmillIO/ClientSide/Sounds'
+  Viewer: True
   StimuliList:
     InterpatchSound1: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
