@@ -23,6 +23,7 @@ matplotlib.use('Qt5Agg')
 import matplotlib.pyplot as plt
 from inspect import signature
 import time
+import networkx as nx
 
 class FigIDs:
     StateViewer = 1
@@ -57,7 +58,7 @@ class Viewer:
                 # Convert all data to dict for consistency
                 if not isinstance(data, dict):
                     raise ValueError('Message type not understood.')
-                if data.get('priority', 1) < 1:
+                if data.pop('priority', 1) < 1:
                     # Flush low-priority messages if buffer full
                     continue
                 else:
@@ -142,6 +143,59 @@ class SoundStimulusViewer(Viewer):
                 self.ax.set_aspect(len(self.stimuli)/(self.max_gain - self.min_gain))
 
 
+class StateMachineViewer(Viewer):
+
+    def __init__(self, graph):
+        Viewer.__init__(self)
+
+        self.AGraph = graph
+        self.NGraph = nx.nx_agraph.from_agraph(graph)
+
+    def start(self):
+        Viewer.start(self)
+
+        # Create figure
+        plt.set_cmap('ocean')
+        self.off_color = 0.50
+        self.on_color = 0.15
+        self.fig, self.ax = plt.subplots()
+        self.ax.margins(x=0.25, y=0.25) # some padding for state labels
+
+        # Draw network (from nx.draw_networkx())
+        self._pos = nx.drawing.kamada_kawai_layout(self.NGraph) # spring layout also okay
+        self._c = self.off_color*np.ones([len(self.AGraph.nodes())]) # see set_array()
+        self._idx = 0 # index of current state
+        self._nodes = nx.draw_networkx_nodes(self.NGraph, 
+                                             self._pos, 
+                                             node_size=500,
+                                             node_colors=self._c,
+                                             ax=self.ax)
+        self._nodes.set_clim([0.0, 1.0]) # set cmap limits for PathCollection object
+        self._edges = nx.draw_networkx_edges(self.NGraph, 
+                                             self._pos, 
+                                             arrows=True, 
+                                             ax=self.ax)
+        self._labels = nx.draw_networkx_labels(self.NGraph, 
+                                               self._pos,
+                                               font_size=7,
+                                               font_weight='bold',
+                                               ax=self.ax)
+
+    def update(self, data):
+        Viewer.update(self, data)
+
+        for state, _ in data.items():
+            # Error checking
+            if state not in self.AGraph.nodes(): # list of state names
+                raise ValueError('State {} not in graph.'.format(state))
+
+            # Get state index
+            self._c[self._idx] = self.off_color
+            self._idx = self.AGraph.nodes().index(state)
+            self._c[self._idx] = self.on_color
+            self._nodes.set_array(self._c) # passes floats for cmap colors
+
+
 class StateViewer(Viewer):
 
     def __init__(self):
@@ -204,7 +258,8 @@ class PatchViewer(StateViewer):
 
 
 VIEWER_TYPES = {'SoundStimulus': SoundStimulusViewer,
-                'PatchState': PatchViewer}
+                'PatchState': PatchViewer,
+                'StateMachine': StateMachineViewer}
 
 def launch_viewer(viewer_type, *args, **kwargs):
     try:

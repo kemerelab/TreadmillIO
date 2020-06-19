@@ -7,6 +7,7 @@ import random
 import pickle
 import pygraphviz
 from .viewer import launch_viewer
+import networkx as nx
 
 class StateTransitionCondition:
     def __init__(self, label, state_config, io_interface):
@@ -601,7 +602,7 @@ class PatchState(TaskState):
         # Update patch statistics, i.e. if reward is available
         self.Model.update(self.io_interface.MasterTime)
         if self.render_viewer:
-            update_dict = {'reward': [self.Model.t, self.Model.available_reward],
+            update_dict = {'reward': [self.Model.t, self.Model.available_reward - self.R_harvest],
                            'priority': 0}
             self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
@@ -924,6 +925,9 @@ class TaskStateMachine():
             else:
                 self.port = "5556"
 
+        self.render_viewer = config.get('Viewer', False)
+        if self.render_viewer:
+            self._viewer_conn, self._p_viewer = launch_viewer('StateMachine', self.render())
 
     def __enter__(self):
         if self.needs_zmq:
@@ -951,6 +955,10 @@ class TaskStateMachine():
                 self.CurrentState.on_entrance(self.socket, logger)
             else:
                 self.CurrentState.on_entrance(logger)
+                
+            if self.render_viewer:
+                update_dict = {self.CurrentState.label: None, 'priority': 1}
+                self._viewer_conn.send_bytes(pickle.dumps(update_dict))          
         else:
             self.CurrentState.on_remain(logger)
 
@@ -963,7 +971,7 @@ class TaskStateMachine():
             self.new_state = False
 
 
-    def render(self, filename):
+    def render(self, filename=None):
         G = pygraphviz.AGraph(directed=True, rankdir='LR', type='UTF-8')
         for state_name, state in self.StateMachineDict.items():
             G.add_node(state.label, label='<'+state.get_graph_label()+'>',shape='box')
@@ -982,6 +990,8 @@ class TaskStateMachine():
         G.node_attr.update(fontname='helvetica', fontsize="10")
         G.edge_attr.update(len=3)
         G.layout('neato') # layout with default (neato)
-        G.draw(filename) # draw file
-        # G.write('test.dot') # useful for debugging
-        print('Drew Graph')
+        if filename is not None:
+            G.draw(filename) # draw file
+            # G.write('test.dot') # useful for debugging
+            print('Drew Graph')
+        return G
