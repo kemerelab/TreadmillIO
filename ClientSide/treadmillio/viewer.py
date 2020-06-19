@@ -155,11 +155,13 @@ class StateMachineViewer(Viewer):
         Viewer.start(self)
 
         # Create figure
-        plt.set_cmap('ocean')
-        self.off_color = 0.50
-        self.on_color = 0.15
         self.fig, self.ax = plt.subplots()
         self.ax.margins(x=0.25, y=0.25) # some padding for state labels
+
+        # Color scheme
+        plt.set_cmap('ocean') # putting this here avoids creating extra figure
+        self.off_color = 0.50
+        self.on_color = 0.15
 
         # Draw network (from nx.draw_networkx())
         self._pos = nx.drawing.kamada_kawai_layout(self.NGraph) # spring layout also okay
