@@ -1,0 +1,257 @@
+# The point of this config file is to light up all 12 of the GPIO LEDs for testing during manufacturing.
+# It's a simple statemachine that set's them to high, and then turns one off at a time with a 500 ms delay,
+#   until they're all off. Then the cycle repeats.
+#
+# Since its for testing, this is also a chance to validate that "LogCommands: False" doesn't cause problems.
+
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: False
+
+
+GPIO: # A list of GPIO pins used in the task
+  GPIO1: # This is an arbitrary label used later to configure Reward
+    Number: 1 # This is the pin number from the board
+    Type: 'Output' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' or 'Input_Disable' 
+                           # (where the pull-down/pull-up resistors are enabled).
+    #Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
+    #            # enabling the power channel of the audio jack.
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  GPIO2:
+    Number: 2
+    Type: 'Output'
+    Mirror: True
+  GPIO3:
+    Number: 3
+    Type: 'Output'
+    Mirror: True
+  GPIO4:
+    Number: 4
+    Type: 'Output'
+    Mirror: True
+  GPIO5:
+    Number: 5
+    Type: 'Output'
+    Mirror: True
+  GPIO6:
+    Number: 6
+    Type: 'Output'
+    Mirror: True
+  GPIO7:
+    Number: 7
+    Type: 'Output'
+    Mirror: True
+  GPIO8:
+    Number: 8
+    Type: 'Output'
+    Mirror: True
+  GPIO9:
+    Number: 9
+    Type: 'Output'
+    Mirror: True
+  GPIO10:
+    Number: 10
+    Type: 'Output'
+    Mirror: True
+  GPIO11:
+    Number: 11
+    Type: 'Output'
+    Mirror: True
+  GPIO12:
+    Number: 12
+    Type: 'Output'
+    Mirror: True
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    AllOn1:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO1'
+        Value: 1
+      NextState: 'AllOn2'
+    AllOn2:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO2'
+        Value: 1
+      NextState: 'AllOn3'
+    AllOn3:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO3'
+        Value: 1
+      NextState: 'AllOn4'
+    AllOn4:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO4'
+        Value: 1
+      NextState: 'AllOn5'
+    AllOn5:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO5'
+        Value: 1
+      NextState: 'AllOn6'
+    AllOn6:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO6'
+        Value: 1
+      NextState: 'AllOn7'
+    AllOn7:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO7'
+        Value: 1
+      NextState: 'AllOn8'
+    AllOn8:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO8'
+        Value: 1
+      NextState: 'AllOn9'
+    AllOn9:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO9'
+        Value: 1
+      NextState: 'AllOn10'
+    AllOn10:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO10'
+        Value: 1
+      NextState: 'AllOn11'
+    AllOn11:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO11'
+        Value: 1
+      NextState: 'AllOn12'
+    AllOn12:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO12'
+        Value: 1
+      NextState: 
+        AllOff1:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff1:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO1'
+        Value: 0
+      NextState:
+        AllOff2:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff2:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO2'
+        Value: 0
+      NextState:
+        AllOff3:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff3:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO3'
+        Value: 0
+      NextState:
+        AllOff4:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff4:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO4'
+        Value: 0
+      NextState:
+        AllOff5:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff5:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO5'
+        Value: 0
+      NextState:
+        AllOff6:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff6:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO6'
+        Value: 0
+      NextState:
+        AllOff7:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff7:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO7'
+        Value: 0
+      NextState:
+        AllOff8:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff8:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO8'
+        Value: 0
+      NextState:
+        AllOff9:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff9:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO9'
+        Value: 0
+      NextState:
+        AllOff10:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff10:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO10'
+        Value: 0
+      NextState:
+        AllOff11:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff11:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO11'
+        Value: 0
+      NextState:
+        AllOff12:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+    AllOff12:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO12'
+        Value: 0
+      NextState:
+        AllOn1:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+
+

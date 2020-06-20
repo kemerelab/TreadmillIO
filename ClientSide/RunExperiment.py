@@ -58,7 +58,8 @@ with open(args.param_file, 'r') as f:
 # ------------------- Validate config file-------------------------------------------------------------
 from treadmillio.soundstimulus import validate_sound_config
 
-validate_sound_config(Config['AuditoryStimuli'])
+if 'AuditoryStimuli' in Config:
+    validate_sound_config(Config['AuditoryStimuli'])
 
 # ------------------- Setup logging. ------------------------------------------------------------------
 DoLogCommands = True
@@ -199,7 +200,7 @@ with ExitStack() as stack:
         log_writer = csv.writer(log_file) # logging is actually CSV format
 
 
-        if StateMachine:
+        if StateMachine and DoLogCommands:
             # Create state machine log file and write header
             state_machine_log = stack.enter_context(open(os.path.join(log_directory, 'StatemachineLog.csv'), 'w', newline=''))
             print(f'State Machine Log File.\n   Version {NamedVersion}',file=state_machine_log)
@@ -229,7 +230,8 @@ with ExitStack() as stack:
         last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
-        log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
+        if DoLogCommands:
+            log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
         if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
             print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}')
@@ -241,7 +243,10 @@ with ExitStack() as stack:
             SoundController.update_beeps(MasterTime) # stop any outstanding beeps
 
         if StateMachine:
-            StateMachine.update_statemachine(state_log_writer.writerow) # update the state machine
+            if DoLogCommands:
+                StateMachine.update_statemachine(state_log_writer.writerow) # update the state machine
+            else:
+                StateMachine.update_statemachine(None) # update the state machine
 
         unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
         pos = unwrapped_pos % virtual_track_length
@@ -252,7 +257,7 @@ with ExitStack() as stack:
         if RewardZones:
             RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
 
-        if Profiling:
+        if Profiling and DoLogCommands:
             exec_time = time.monotonic() - last_ts
             execution_writer.writerow([exec_time])
 
