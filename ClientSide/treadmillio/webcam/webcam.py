@@ -7,7 +7,9 @@ import numpy as np
 import sys
 import time
 from multiprocessing import Process, Pipe, Value, Queue, Event
+import multiprocessing.connection
 import queue
+import setproctitle
 
 import skvideo.io
 
@@ -19,15 +21,22 @@ class VideoWriter():
 
         filename = 'test.mp4'
         self._writer = skvideo.io.FFmpegWriter(filename, outputdict={
-            '-vcodec': 'libx264', '-b': '300000000'
+            #'-vcodec': 'libx264', '-b': '300000000'
+            '-vcodec': 'libx264', '-crf': '27', '-preset': 'veryfast'
         })
 
     def run(self):
         while not self._terminate_event.is_set():
-            (img, timestamp) = self._frame_queue.get()
-            self._writer.writeFrame(img)
+            if not self._frame_queue.empty():
+                (img, timestamp) = self._frame_queue.get()
+                self._writer.writeFrame(img)
+                time.sleep(1/100)
 
         print('Stopped running in VideoWriter. When will exit be called?')
+        if (self._writer):
+            self._writer.close()
+        if self._done_event:
+            self._done_event.set()
 
     def __enter__(self):
         return self
@@ -36,8 +45,8 @@ class VideoWriter():
         print('Terminating VideoWriter')
         if (self._writer):
             self._writer.close()
-
-        self._done_event.set()
+        if self._done_event:
+            self._done_event.set()
 
 
 class CameraInterface():
@@ -71,6 +80,15 @@ class CameraInterface():
                     if not self._terminate_event.is_set():
                         q.put((frame.img, frame.timestamp))
 
+        print('Terminating Capture in run()')
+        if (self._cap):
+            self._cap.close()
+            self._cap = None
+
+        if self._done_event:
+            self._done_event.set()
+            self._done_event = None
+
     def __enter__(self):
         return self
 
@@ -78,8 +96,8 @@ class CameraInterface():
         print('Terminating Capture')
         if (self._cap):
             self._cap.close()
-
-        self._done_event.set()
+        if self._done_event:
+            self._done_event.set()
 
     
 
@@ -135,11 +153,15 @@ class VideoDisplay(pyglet.window.Window):
             self._quit_event.set()
 
 def start_camera(image_format, frame_queues, terminate_event, done_event):
+    multiprocessing.current_process().name = "Camera"
+    setproctitle.setproctitle(multiprocessing.current_process().name)
     with CameraInterface(image_format, frame_queues, terminate_event, done_event) as camera:
         camera.run()
     return
 
 def start_writer(frame_queue, terminate_event, done_event):
+    multiprocessing.current_process().name = "Writer"
+    setproctitle.setproctitle(multiprocessing.current_process().name)
     with VideoWriter(frame_queue, terminate_event, done_event) as vwriter:
         vwriter.run()
     return
@@ -165,11 +187,12 @@ if __name__ == '__main__':
     vwriter_process.daemon = True
     vwriter_process.start()     # Launch the sound process
 
-
     video_grabber.run()
 
     camera_process_finished.wait()
+    print('Finished waiting for camera')
     vwriter_process_finished.wait()
+    print('Finished waiting for vwriter')
 
     for q in frame_queues:
         while not q.empty():
