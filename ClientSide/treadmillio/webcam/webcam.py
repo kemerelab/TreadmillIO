@@ -11,6 +11,7 @@ import queue
 import setproctitle
 import signal
 import skvideo.io
+import csv
 
 def check_shm(shm_var):
     with shm_var.get_lock():
@@ -23,16 +24,20 @@ def set_shm(shm_var):
 
 
 class VideoWriter():
-    def __init__(self, frame_queue, terminate_flag, done_flag):
+    def __init__(self, filename_header, frame_queue, terminate_flag, done_flag):
         self._terminate_flag = terminate_flag
         self._done_flag = done_flag
         self._frame_queue = frame_queue
 
-        filename = 'test.mp4'
+        filename = 'video' + str(filename_header) + '.mp4'
         self._writer = skvideo.io.FFmpegWriter(filename, outputdict={
             #'-vcodec': 'libx264', '-b': '300000000'
             '-vcodec': 'libx264', '-crf': '27', '-preset': 'veryfast'
         })
+
+        timestamps_filename = 'vid_timestamps' + str(filename_header) + '.csv'
+        self._ts_file = open(timestamps_filename, 'w')
+        self._ts_writer = csv.writer(self._ts_file, delimiter=',')
 
     def run(self):
         t_write = 0
@@ -42,6 +47,7 @@ class VideoWriter():
                     t0 = time.time()
                     (img, timestamp) = self._frame_queue.get(0)
                     self._writer.writeFrame(img)
+                    self._ts_writer.writerow([timestamp, time.clock_gettime_ns(time.CLOCK_MONOTONIC)])
                     t_write = time.time() - t0
                 except queue.Empty:
                     time.sleep(max(1/30 - 1.5*t_write,0)) # approx time till next frame
@@ -52,6 +58,9 @@ class VideoWriter():
         if (self._writer):
             self._writer.close()
             self._writer = None
+        if (self._ts_file):
+            self._ts_file.close()
+            self._ts_file = None
         if self._done_flag:
             set_shm(self._done_flag)
             self._done_event = None
@@ -62,6 +71,8 @@ class VideoWriter():
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         print('Terminating Writer in exit')
+        if (self._ts_file):
+            self._ts_file.close()
         if (self._writer):
             self._writer.close()
         if self._done_flag:
@@ -69,7 +80,7 @@ class VideoWriter():
 
 
 class CameraInterface():
-    def __init__(self, image_format, frame_queues, terminate_flag, done_flag):
+    def __init__(self, which_camera, image_format, frame_queues, terminate_flag, done_flag):
         logging.basicConfig(level=logging.INFO)
         self._terminate_flag = terminate_flag
         self._done_flag = done_flag
@@ -81,7 +92,10 @@ class CameraInterface():
             print(dev)
             print(dev["uid"])
 
-        self._cap = uvc.Capture(dev_list[0]["uid"])
+        self._cap = uvc.Capture(dev_list[which_camera]["uid"])
+
+        self._cap.bandwidth_factor = 4
+
         print(self._cap.avaible_modes)
         for c in self._cap.controls:
             print(c.display_name)
@@ -178,21 +192,31 @@ class VideoDisplay(pyglet.window.Window):
         self.close()
 
 
-def start_camera(image_format, frame_queues, terminate_flag, done_flag):
+def start_camera(camera, image_format, frame_queues, terminate_flag, done_flag):
     multiprocessing.current_process().name = "Camera"
     setproctitle.setproctitle(multiprocessing.current_process().name)
-    with CameraInterface(image_format, frame_queues, terminate_flag, done_flag) as camera:
+    with CameraInterface(camera, image_format, frame_queues, terminate_flag, done_flag) as camera:
         camera.run()
     return
 
-def start_writer(frame_queue, terminate_flag, done_flag):
+def start_writer(header, frame_queue, terminate_flag, done_flag):
     multiprocessing.current_process().name = "Writer"
     setproctitle.setproctitle(multiprocessing.current_process().name)
-    with VideoWriter(frame_queue, terminate_flag, done_flag) as vwriter:
+    with VideoWriter(header, frame_queue, terminate_flag, done_flag) as vwriter:
         vwriter.run()
     return
 
-if __name__ == '__main__':
+
+import sys
+
+def main():
+
+    if len(sys.argv) > 1:
+        camera = int(sys.argv[1])
+    else:
+        camera = 0
+        print("Using camera ", camera)
+
     visualization_frame_queue = multiprocessing.Queue()
     storage_frame_queue = multiprocessing.Queue()
 
@@ -205,11 +229,11 @@ if __name__ == '__main__':
     video_grabber = VideoDisplay((480, 640, 3), visualization_frame_queue, terminate_flag)
     #signal.signal(signal.SIGINT, video_grabber.handle_sigint)
 
-    camera_process = multiprocessing.Process(target=start_camera, args=((480, 640, 3), frame_queues, terminate_flag, camera_process_finished))
+    camera_process = multiprocessing.Process(target=start_camera, args=(camera, (480, 640, 3), frame_queues, terminate_flag, camera_process_finished))
     camera_process.daemon = True
     camera_process.start()     # Launch the sound process
 
-    vwriter_process = multiprocessing.Process(target=start_writer, args=(storage_frame_queue, terminate_flag, vwriter_process_finished))
+    vwriter_process = multiprocessing.Process(target=start_writer, args=(camera, storage_frame_queue, terminate_flag, vwriter_process_finished))
     vwriter_process.daemon = True
     vwriter_process.start()     # Launch the sound process
 
@@ -243,3 +267,5 @@ if __name__ == '__main__':
     camera_process.join()
     vwriter_process.join()
     
+if __name__ == '__main__':
+    main()
