@@ -1,6 +1,6 @@
 import os, setproctitle, signal, time
 
-import skvideo.io
+import skvideo.io # scikit-video
 import logging
 
 import multiprocessing
@@ -13,19 +13,10 @@ def check_shm(shm_var):
         value = shm_var.value
     return value
 
-def set_shm(shm_var):
-    with shm_var.get_lock():
-        shm_var.value = True
-
-def unset_shm(shm_var):
-    with shm_var.get_lock():
-        shm_var.value = False
-
 
 class VideoWriter():
-    def __init__(self, config, frame_queue, terminate_flag, done_flag):
+    def __init__(self, config, frame_queue, terminate_flag):
         self._terminate_flag = terminate_flag
-        self._done_flag = done_flag
         self._frame_queue = frame_queue
 
         filename_header = config['FilenameHeader']
@@ -43,12 +34,10 @@ class VideoWriter():
         self._ts_file = open(timestamps_filename, 'w')
         self._ts_writer = csv.writer(self._ts_file, delimiter=',')
 
-        self.alive = True
-
     def run(self):
         t_write = 0
         try:
-            while not check_shm(self._terminate_flag) and self.alive:
+            while not check_shm(self._terminate_flag):
                 try:
                     t0 = time.time()
                     (img, timestamp) = self._frame_queue.get(0)
@@ -60,40 +49,35 @@ class VideoWriter():
         except KeyboardInterrupt:
             pass
 
-        print('Terminating Writer in run loop')
+        self.close()
+
+    def close(self):
         if (self._writer):
             self._writer.close()
             self._writer = None
         if (self._ts_file):
             self._ts_file.close()
             self._ts_file = None
-        if self._done_flag:
-            set_shm(self._done_flag)
-            self._done_event = None
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        if (self._ts_file):
-            self._ts_file.close()
-        if (self._writer):
-            self._writer.close()
-        if self._done_flag:
-            set_shm(self._done_flag)
+        self.close()
         print('Video writer exited')
 
 
 def simple_handler(signal, frame):
-    print('VideoWriter caught SIGINT. Passing it along as an exception.')
+    # print('VideoWriter caught SIGINT. Passing it along as an exception.')
     raise(KeyboardInterrupt)
 
 def start_writer(config, frame_queue, terminate_flag, done_flag):
     signal.signal(signal.SIGINT, simple_handler)
 
-    multiprocessing.current_process().name = "Webcam/Writer"
+    multiprocessing.current_process().name = "python3 USBCamera/Writer"
     setproctitle.setproctitle(multiprocessing.current_process().name)
-    with VideoWriter(config, frame_queue, terminate_flag, done_flag) as vwriter:
-        unset_shm(done_flag) #  change our done state to False
+    with VideoWriter(config, frame_queue, terminate_flag) as vwriter:
+        done_flag.value = False #  change our done state to False
         vwriter.run()
+    done_flag.value = True
     return

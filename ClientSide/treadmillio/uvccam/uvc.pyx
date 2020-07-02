@@ -628,6 +628,8 @@ cdef class Capture:
         ##check jpeg header
         header_ok = turbojpeg.tjDecompressHeader2(self.tj_context,  <unsigned char *>uvc_frame.data, uvc_frame.data_bytes, &j_width, &j_height, &jpegSubsamp)
         if not (header_ok >=0 and uvc_frame.width == j_width and uvc_frame.height == j_height):
+            print("Size ", uvc_frame.data_bytes, "Header ", header_ok, "Width ", j_width, "Height ", j_height, "Sub samp", jpegSubsamp)
+            print(turbojpeg.tjGetErrorStr())
             raise StreamError("JPEG header corrupt.")
 
         cdef Frame out_frame = Frame()
@@ -715,6 +717,7 @@ cdef class Capture:
 
 
     def close(self):
+        print('Trying to close in UVC.pyx')
         if self._stream_on:
             self._stop()
         if self.devh != NULL:
@@ -724,6 +727,7 @@ cdef class Capture:
             self.ctx = NULL
             turbojpeg.tjDestroy(self.tj_context)
             self.tj_context = NULL
+        print('Finished closing in UVC.pyx')
 
     def __dealloc__(self):
         self.close()

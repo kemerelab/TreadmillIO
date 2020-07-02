@@ -53,15 +53,15 @@ AuditoryStimuli:
   DeviceList:
     Output1:
       Type: 'Output' # Input or Output
-      HWDevice: 'hw:CARD=Creative,DEV=0'
-      BufferSize: 16
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      BufferSize: 128
       NPeriods: 2
       NChannels: 2
       ChannelLabels:
         Speaker1: 1
     Microphone1:
       Type: 'Input'
-      HWDevice: 'hw:CARD=Creative,DEV=0'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
       NChannels: 2
       SamplingRate: 96000 # I'd like to autodetect from playback, but this would require communication between processes
       BufferSize: 1024 

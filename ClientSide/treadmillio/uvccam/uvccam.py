@@ -19,39 +19,67 @@ consumer_finished_flags = {}
 all_processes = {}
 num_cameras = 0
 terminate_flag = multiprocessing.Value('b', False) # This is the global flag that is used to signal that the whole edice should collapse gracefully
+control_c_counter = 0
 
 def termination_handler(signal, frame):
+    global control_c_counter
+    control_c_counter = control_c_counter + 1
+
     # global terminate_flag
     # set_shm(terminate_flag)
-    print('Trusting that SIGINT got caught everywhere.')
+    print("SIGINT triggered in primary handler. Try pressing CTRL-C a second time if things don't terminate.")
+
+    # This bit of code is for the SECOND time we CTRL-C
+    global all_processes
+    if control_c_counter > 1:
+        if all_processes:
+            all_processes_keys = list(all_processes.keys())
+            for procname in all_processes_keys:
+                print('Testing aliveness of {}.'.format(procname))
+                if not all_processes[procname].is_alive():
+                    print('It was defunct!')
+                    del all_processes[procname]
+                    if procname in producer_finished_flags:
+                        producer_finished_flags[procname].value = True
+                    elif procname in consumer_finished_flags:
+                        consumer_finished_flags[procname].value = True
+                else:
+                    print('Still alive')
+
+    # Nobodies alive anymore
+    if not all_processes:
+        sys.exit()
 
     for flagname, flag in producer_finished_flags.items():
         print('Waiting on {}'.format(flagname))
-        while not check_shm(flag):
+        while not flag.value: # no lock!
             pass
         print('Finished waiting for {} to finish.'.format(flagname))
 
     for flagname, flag in consumer_finished_flags.items():
         print('Waiting on {}'.format(flagname))
-        while not check_shm(flag):
+        while not flag.value: # no lock!
             pass
         print('Finished waiting for {} to finish.'.format(flagname))
 
+    time.sleep(0.1) # give a second for the queue background process (thread?) to finish loading data
     global all_queues
-    for q in all_queues:
-        time.sleep(0.1) # give a second for the queue background process (thread?) to finish loading data
-        while not q.empty():
-            print('draining queue')
-            q.get()
-            time.sleep(0.01) # give a second for the queue background process (thread?) to finish loading data
+    while all_queues:
+        for q in all_queues:
+            print('draining queue', q)
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                print('removing', q)
+                all_queues.remove(q)
 
-
-    global all_processes
     for procname, proc in all_processes.items():
         print('Waiting for {} to join.'.format(procname))
         proc.join()
 
     print('All camera processes joined.')
+
+    sys.exit()
 
 from treadmillio.webcam.videowriter import start_writer
 from treadmillio.webcam.camerainterface import start_camera
@@ -76,7 +104,7 @@ def RunCameraInterface(config, no_escape=True):
     all_queues.extend(frame_queues)
     signal.signal(signal.SIGINT, termination_handler)
 
-    camera_process_finished = multiprocessing.Value('b', True) # This signals to the main process that the camera acquisition process has terminated
+    camera_process_finished = multiprocessing.RawValue('b', True) # This signals to the main process that the camera acquisition process has terminated
     global producer_finished_flags
     producer_finished_flags['Camera{}'.format(num_cameras)] = camera_process_finished
 
@@ -91,7 +119,7 @@ def RunCameraInterface(config, no_escape=True):
     global consumer_finished_flags
 
     if do_record:
-        vwriter_process_finished = multiprocessing.Value('b', True) # This signals to the main process that the video writing process has terminated
+        vwriter_process_finished = multiprocessing.RawValue('b', True) # This signals to the main process that the video writing process has terminated
         consumer_finished_flags['Writer{}'.format(num_cameras)] = camera_process_finished
     
         vwriter_process = multiprocessing.Process(target=start_writer, args=(config, storage_frame_queue, terminate_flag, vwriter_process_finished))
@@ -101,7 +129,7 @@ def RunCameraInterface(config, no_escape=True):
 
     # Create the main pyglet window
     time.sleep(0.1)
-    pyglet_process_finished = multiprocessing.Value('b', True) # This signals to the main process that the camera acquisition process has terminated
+    pyglet_process_finished = multiprocessing.RawValue('b', True) # This signals to the main process that the camera acquisition process has terminated
     consumer_finished_flags['Pyglet{}'.format(num_cameras)] = pyglet_process_finished
 
     pyglet_process = multiprocessing.Process(target=start_window, args=(config, visualization_frame_queue, terminate_flag, pyglet_process_finished, no_escape))

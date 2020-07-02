@@ -12,27 +12,21 @@ def set_shm(shm_var):
     with shm_var.get_lock():
         shm_var.value = True
 
-def unset_shm(shm_var):
-    with shm_var.get_lock():
-        shm_var.value = False
-
 
 def simple_handler(signal, frame):
-    print('Caught sigint simply')
+    # print('Caught SIGINT and passed it on as an exception')
     raise(KeyboardInterrupt)
-
 
 def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_escape):
     signal.signal(signal.SIGINT, simple_handler)
-    multiprocessing.current_process().name = "Webcam/Pyglet"
+    multiprocessing.current_process().name = "python3 USBCamera/pyglet_view"
 
     import pyglet
     from pyglet.window import key
 
     class CameraWindow(pyglet.window.Window):
-        def __init__(self, config, frame_queue, quit_flag, finished_flag, no_escape=True):
-            self._quit_flag = quit_flag
-            self._finished_flag = finished_flag
+        def __init__(self, config, frame_queue, quit_flag, no_escape=True):
+            self._quit_flag = quit_flag # used to let this process signal everyone else to exit
             self._frame_queue = frame_queue
 
             self.sy = config['ResY']
@@ -47,7 +41,6 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
                 initial_texture.tobytes(),pitch=-self.sx*self.number_of_channels)
             
             self._tex = self._img.get_texture()
-            self.alive = True
 
             self._no_escape = no_escape
 
@@ -55,11 +48,14 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
             if symbol == key.ESCAPE:
                 if not self._no_escape:
                     print('Application Exited with Key Press')
+                    if self._quit_flag:
+                        set_shm(self._quit_flag)
+                        self._quit_flag = None
                     self.graceful_shutdown()
                 
 
         def update(self, dt):
-            if check_shm(self._quit_flag):
+            if self._quit_flag and check_shm(self._quit_flag):
                 self.graceful_shutdown()
 
         def on_draw(self):
@@ -88,21 +84,21 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
 
         def graceful_shutdown(self):
             print('Terminating gracefully.')
-            if self._quit_flag:
-                set_shm(self._quit_flag)
-                self._quit_flag = None
-
-            set_shm(self._finished_flag)
             self.close()
 
 
-    camera_window = CameraWindow(config, visualization_frame_queue, quit_flag, done_flag, no_escape)
+    camera_window = CameraWindow(config, visualization_frame_queue, quit_flag, no_escape)
     pyglet.clock.schedule_interval(camera_window.update, 1/60.0)
 
     try:
-        unset_shm(done_flag)
+        done_flag.value = False
         pyglet.app.run()
     except KeyboardInterrupt:
-        print('Pyglet caught sigint')
+        # print('Pyglet caught sigint')
         camera_window.graceful_shutdown()
+        done_flag.value = True
+    except Exception as e:
+        print("Exception cw!!!", e)
+
+
 

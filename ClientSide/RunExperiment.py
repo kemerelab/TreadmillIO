@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.8
 
 #%%
 # NOTE: v2.1.1. 3 different Tones (3kHz, 6kHz, 12kHz) are played based on animal's position on the virtual track. 
@@ -176,7 +176,7 @@ with ExitStack() as stack:
         # -------------------------- Set up all the different log files -------------------------------------
         # Log git diffs for provenance
 
-        import git
+        import git # gitpython
         repo = git.Repo(search_parent_directories=True)
 
         GitCommit = repo.head.object.hexsha
@@ -212,20 +212,18 @@ with ExitStack() as stack:
 
     # ------------------- Webcam Video Recording. ------------------------------------------------------------------
     if 'Cameras' in Config:
-        from treadmillio.webcam.webcam import RunCameraInterface
+        from treadmillio.uvccam.uvccam import RunCameraInterface
         if DoLogCommands:
-            for camera in Config['Cameras'].items():
+            for cameraname, camera in Config['Cameras'].items():
                 camera['LogDirectory'] = log_directory
         else:
-            for camera in Config['Cameras'].items():
+            for cameraname, camera in Config['Cameras'].items():
                 if camera['RecordVideo']:
                     print('Over-riding camera configuration to not record video or timestamps!!!')
                 camera['RecordVideo'] = False
 
-        for camera in Config['Cameras'].items():
-            camera_process = multiprocessing.Process(target=RunCameraInterface, args=(camera))
-            camera_process.daemon = True
-            camera_process.start()     # Launch the camera frame acquisition process
+        for cameraname, camera in Config['Cameras'].items():
+            RunCameraInterface(camera) # this starts a bunch of processes
 
     # ----------------- Initialization
     ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
