@@ -1,3 +1,7 @@
+# This config file is intendend to do a simple test of sound playback.
+# If it is working, the sound should switch from the left ear to the right
+# each second, with pink noise on the right and a 3 kHz tone on the left.
+
 Preferences:
   HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
@@ -16,16 +20,11 @@ Maze:
 
 StateMachine:
   States:
-    Start:
-      Type: 'SetSoundState'
-      Params:
-        LeftEarSound: 'On'
-        RightEarSound: 'On'
-      NextState: 'LeftSilence'
     LeftSilence:
       Type: 'SetSoundState'
       Params:
-        LeftEarSound: 'Off'
+        RightEarSound: 'Off'
+        LeftEarSound: 'On'
       NextState:
         LeftSound:
           ConditionType: 'ElapsedTime'
@@ -34,7 +33,8 @@ StateMachine:
     LeftSound:
       Type: 'SetSoundState'
       Params:
-        LeftEarSound: 'On'
+        RightEarSound: 'On'
+        LeftEarSound: 'Off'
       NextState:
         LeftSilence:
           ConditionType: 'ElapsedTime'
@@ -43,43 +43,31 @@ StateMachine:
 
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds'
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
   StimuliList:
-    LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+    RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'pink_noise.wav'
       BaselineGain: 0.0
       Device: 'Speaker1' # or single device, or list of devices
-    RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+    LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'tone_3kHz.wav'
       BaselineGain: 0.0
       Device: 'Speaker2'
   DeviceList:
-    Speaker1:
+    Output1:
       Type: 'Output' # Input or Output
-      ClientName: 'system' # host name of JACK device (default system)
-      PortName: 'playback_1' # port name on JACK device (default capture, playback)
-      OscPort: 12000 # OSC port for associated minimixer
-      MinimixerChannel: 'left'
-      Channel: 0
-      Record: False # record signal to/from device with jack_capture?
-    Speaker2:
-      Type: 'Output'
-      ClientName: 'system'
-      PortName: 'playback_2'
-      OscPort: 12001
-      MinimixerChannel: 'left'
-      Channel: 1
-      Record: False
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      ChannelLabels:
+        Speaker1: 0
+        Speaker2: 1
     Microphone1:
       Type: 'Input'
-      ClientName: 'system'
-      PortName: 'capture_1'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
+      BufferSize: 1024 
       Record: True
-    Microphone2:
-      Type: 'Input'
-      ClientName: 'system'
-      PortName: 'capture_2'
-      Record: True
-
+      FilenameHeader: ''

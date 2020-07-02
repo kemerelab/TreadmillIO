@@ -1,7 +1,6 @@
 import time
 from subprocess import Popen, DEVNULL
-import jack # pip install JACK-client
-from oscpy.client import OSCClient
+
 import os
 import warnings
 import socket
@@ -9,91 +8,68 @@ import signal
 import pickle
 from .viewer import launch_viewer
 
-@jack.set_error_function
-def error(msg):
-    print('JackClientError:', msg)
+from multiprocessing import Process, Pipe, Value
+import pickle
 
-# Suppress printing of JACK Client info when we start it up later
-@jack.set_info_function
-def info(msg):
-    pass
+from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
 
-def minimixer_cmd(speaker):
-    return ['/usr/local/bin/jackminimix', 
-            '-{}'.format(args.side[0]), '{}:{}'.format(speaker['ClientName'], speaker['PortName']), 
-            '-p', '{}'.format(speaker['OSCPort']),
-            '-n', 'minimixer-{}'.format(speaker['Name'])]
+from .alsainterface import normalize_output_device, normalize_input_device, look_for_and_add_stimulus_defaults
 
-def jackplay_cmd(speaker, channel, filename):
-    return ['/usr/local/bin/sndfile-jackplay', 
-            '-l', '0', 
-            '-a=minimixer-{}:{}'.format(speaker['Name'], channel), 
-            '{}{}'.format(AUDIO_DIR, filename)]
+import cProfile
 
-def jackcapture_cmd(device, output_dir):
-    return ['/usr/local/bin/jack_capture',
-            '--channels', '1',
-            '--port', '{}:{}'.format(device['ClientName'], device['PortName']),
-            '--timestamp',
-            '--filename-prefix', '{}/{}-'.format(output_dir, device['Name'])]
 
-# Default parameters
-DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
-                         'ClientName': 'system',
-                         'PortName': 'playback_1',
-                         'OscPort': 12345,
-                         'MinimixerChannel': 'left',
-                         'Record': False}
 
-DEFAULT_INPUT_DEVICE = {'Type': 'Input',
-                        'ClientName': 'system',
-                        'PortName': 'capture_1',
-                        'Record': True}
+def db2lin(db_gain):
+    return 10.0 ** (db_gain * 0.05)
+
+def run_audio_playback_process(device_name, config, file_dir, control_pipe, log_directory):
+    playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)
+    try:
+        # cProfile.runctx('playback_system.play()', globals(), locals(), "results.prof") # useful for debugging
+        print('Playback starting')
+        playback_system.play()
+    except KeyboardInterrupt:
+        print('Caught SIGINT in ALSA process')
+        playback_system.running = False
+
+def run_audio_record_process(device_name, config, log_directory):
+    record_system = ALSARecordSystem(device_name, config, log_directory)
+    try:
+        print('Record starting')
+        record_system.record()
+    except KeyboardInterrupt:
+        print('Caught SIGINT in ALSA process')
+        record_system.running = False
+
 
 class SoundStimulusController():
+    def __init__(self, sound_config, track_length=None, log_directory=None, verbose=0):
 
-    def __init__(self, sound_config, track_length=None, verbose=0):
-        #start jack with = ['/usr/bin/jackd', '--realtime', '-P10','-d', 'alsa', '-p128', '-n2', '-r48000']
-        #self.p_jack = Popen(jack_cmd, stdout=DEVNULL, stderr=DEVNULL)
+        # TODO: Handle pipes for multiple audio devices
+        # TODO: Error check the YAML file before this to make sure
+        #       that sound stimuli specify devices that are in the device list
+        #       otherwise, the process will be exit without the main program
+        #       realizing it.
 
-        if 'MaximumNumberOfStimuli' in sound_config:
-            totalStimuli = sound_config['MaximumNumberOfStimuli']
-        else:
-            totalStimuli = 10
-
-        if 'AudioFileDirectory' in sound_config:
-            file_root = sound_config['AudioFileDirectory']
-        else:
-            file_root = None
-
-        # Device placeholders
-        self.devices = {}
-        self.record_devices = []
-
-        # Add audio I/O devices
         if 'DeviceList' in sound_config:
-            DeviceList = sound_config['DeviceList']
-        else:
-            DeviceList = {'Default': DEFAULT_OUTPUT_DEVICE}
-        for device_name, device in DeviceList.items():
-            if verbose > 1:
-                print('Adding device {}...'.format(device_name))
-            self.add_device(device_name, device, verbose)
-            time.sleep(0.25)
+            for dev_name, dev in sound_config['DeviceList'].items():
+                if dev['Type'] == 'Output':
+                    _playback_read_pipe, self.alsa_playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
+                    self._audio_playback_process = Process(target=run_audio_playback_process, args=(dev_name, sound_config, 
+                                                sound_config['AudioFileDirectory'], _playback_read_pipe, log_directory))
+                    self._audio_playback_process.daemon = True
+                    self._audio_playback_process.start()     # Launch the sound process
+
+        if 'DeviceList' in sound_config:
+            for dev_name, dev in sound_config['DeviceList'].items():
+                if dev['Type'] == 'Input':
+                    self._record_playback_process = Process(target=run_audio_record_process, args=(dev_name, dev, log_directory))
+                    self._record_playback_process.daemon = True
+                    self._record_playback_process.start()     # Launch the sound process
+
 
         # Get stimuli parameters
-        StimuliList = sound_config['StimuliList']
-        if 'Defaults' in sound_config:
-            print('SoundStimulus: setting defaults.')
-            for stimulus_name, stimulus in StimuliList.items(): 
-                print(' - ',stimulus_name)
-                for key, config_item in sound_config['Defaults'].items():
-                    if key not in stimulus:
-                        stimulus[key] = config_item
-                    elif isinstance(config_item, dict):
-                        for subkey, sub_config_item in config_item.items():
-                            if subkey not in stimulus[key]:
-                                stimulus[key][subkey] = sub_config_item
+        StimuliList = look_for_and_add_stimulus_defaults(sound_config)
 
         # Stimuli placeholders
         self.BackgroundSounds = {}
@@ -105,42 +81,18 @@ class SoundStimulusController():
         for stimulus_name, stimulus in StimuliList.items():
             if verbose > 1:
                 print('Adding stimulus {}...'.format(stimulus_name))
-            device = self.devices[stimulus.get('Device', 'Default')]
-            self.add_stimulus(stimulus_name, stimulus, file_root, device, track_length, verbose)
+            self.add_stimulus(stimulus_name, stimulus, track_length, verbose)
 
-        # Add viewer
-        if sound_config.get('Viewer', False):
-            viewer_dict = {name: s.gain for name, s in self._Stimuli.items()}
-            viewer_conn, p_viewer = launch_viewer('SoundStimulus', stimuli=viewer_dict)
-            for _, sound in self._Stimuli.items():
-                sound.connect_viewer(viewer_conn)
-
-    def add_device(self, device_name, device, verbose=0):
-        if 'Type' not in device:
-            raise ValueError('Device type must be specified for device \'{}\'.'.format(device_name))
-        elif device['Type'].lower() == 'output':
-            # Add output device
-            self.devices[device_name] = SoundOutputDevice(device_name, device, verbose)
-            if device.get('Record', DEFAULT_OUTPUT_DEVICE['Record']):
-                self.record_devices.append(device_name)
-        elif device['Type'].lower() == 'input':
-            # Add input device
-            self.devices[device_name] = SoundInputDevice(device_name, device, verbose)
-            if device.get('Record', DEFAULT_INPUT_DEVICE['Record']):
-                self.record_devices.append(device_name)
-        else:
-            raise ValueError('Unknown device type \'{}\'.'.format(device['Type']))
-
-    def add_stimulus(self, stimulus_name, stimulus, file_root, device, track_length=None, verbose=0):
+    def add_stimulus(self, stimulus_name, stimulus, track_length=None, verbose=0):
         # Add to type-specific mapping
         stimulus['Name'] = stimulus_name
         if stimulus['Type'] == 'Background':
-            new_stimulus = SoundStimulus(stimulus, file_root, device, verbose)
+            new_stimulus = SoundStimulus(stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.BackgroundSounds[stimulus_name] = new_stimulus
-            new_stimulus.change_gain(new_stimulus.baseline_gain) # For background sounds, they should be on at the beginning
+            new_stimulus.change_gain(new_stimulus.baseline_gain)
             #visualization.add_zone_position(0, VirtualTrackLength, fillcolor=stimulus['Color'], width=0.5, alpha=0.75)
         elif stimulus['Type'] == 'Beep':
-            new_stimulus = BeepSound(stimulus, file_root, device, verbose)
+            new_stimulus = BeepSound(stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.Beeps[stimulus_name] = new_stimulus
         elif stimulus['Type'] == 'Localized':
             if not track_length:
@@ -148,7 +100,7 @@ class SoundStimulusController():
             # visualization.add_zone_position(stimulus['CenterPosition'] - stimulus['Modulation']['Width']/2, 
             #                     stimulus['CenterPosition'] + stimulus['Modulation']['Width']/2, 
             #                     fillcolor=stimulus['Color'])
-            new_stimulus = LocalizedSound(track_length, stimulus, file_root, device, verbose)
+            new_stimulus = LocalizedSound(track_length, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
         else:
             raise ValueError('Unknown stimulus type \'{}\'.'.format(stimulus['Type']))
@@ -166,231 +118,65 @@ class SoundStimulusController():
         else:
             raise KeyError('No sound stimulus with name \'{}\'.'.format(stimulus_name))
 
-    def start_capture(self, file_root):
-        for device_name in self.record_devices:
-            self.devices[device_name].start_capture(file_root)
+    def start_capture(self):
+        pass
 
     def stop_capture(self):
-        for device_name in self.record_devices:
-            self.devices[device_name].stop_capture()
-        
+        pass
+
     def update_beeps(self, time):
+        update_dict = {}
         for _, beep in self.Beeps.items():
-            beep.update(time)
+            new_beep_value = beep.update(time)
+            if new_beep_value is not None:
+                update_dict[beep.name] = db2lin(new_beep_value)
+        if update_dict:
+            self.alsa_playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
     def update_localized(self, pos):
+        update_dict = {}
         for _, sound in self.LocalizedStimuli.items():
-            sound.pos_update_gain(pos)
+            pos_gain =  sound.pos_update_gain(pos)
+            if pos_gain is not None:
+                update_dict[sound.name] =  db2lin(pos_gain)
+        if update_dict:
+            self.alsa_playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
-    def update_stimulus(self, stimulus, device, value):
+    def update_stimulus(self, stimulus, value):
         # TODO: error checking
         gain = None
-        s = self.devices[device].get_stimulus(stimulus)
         if isinstance(value, str):
             if value.lower() in ['on', 'baseline']:
-                gain = s.baseline_gain
+                gain = stimulus.baseline_gain
             elif value.lower() == 'off':
-                gain = s.off_gain
+                gain = stimulus.off_gain
         elif isinstance(value, (int, float)):
             gain = value
 
         if gain is None:
             raise ValueError('Value of {} not understood.'.format(value))
         else:
-            return s.change_gain(gain)
+            return stimulus.change_gain(gain)
 
-    def close_process(self):
-        for _, device in self.devices.items():
-            device.close()
-                
     def __del__(self):
-        self.close_process()
+        pass
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        for _, stimulus in self._Stimuli.items():
-            stimulus.close_processes()
-        self.close_process()
-
-class SoundDevice():
-
-    def __init__(self, name, device_config, verbose=0):
-        # NOTE: pass parameters as dictionary or **kwargs?
-        # Dictionary sets default as constant dict above; 
-        # **kwargs sets defaults directly in __init__()
-        
-        # Device name and type
-        self.name = name
-        self.verbose = verbose
-
-        # Record process
-        self.p_capture = None
-
-    @property
-    def client_name(self):
-        raise NotImplementedError
-
-    @property
-    def port_name(self):
-        raise NotImplementedError
-
-    def start_capture(self, file_root):
-        cmd = ['/usr/local/bin/jack_capture',
-               '--channels', '1',
-               '--port', '{}:{}'.format(self.client_name, self.port_name),
-               '--timestamp',
-               '--filename-prefix', '{}/{}-'.format(file_root, self.name), # will not overwrite file
-               '--jack-name', 'jack_capture-{}'.format(self.name),
-               '--no-stdin'] 
-        if self.verbose > 2:
-            self.p_capture = Popen(cmd)
-        else:
-            self.p_capture = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-        return True
-
-    def stop_capture(self, timeout=10.0):
-        if self.p_capture:
-            msg_name = 'jack_capture-{} on {}:{}'.format(self.name, self.client_name, self.port_name)
-            self.p_capture.send_signal(signal.SIGINT)
-            try:
-                if self.p_capture.wait(timeout) != 0:
-                    warnings.warn('Error closing {}.'.format(msg_name))
-                elif self.verbose > 2:
-                    print('Closed {}.'.format(msg_name))
-            except TimeoutError:
-                warnings.warn('{} timed out. Killing process...'.format(msg_name))
-                self.p_capture.kill()
-            self.p_capture = None
-
-    def close(self):
-        self.stop_capture()
-        self._close()
-    
-    def _close(self):
-        pass
-            
-
-class SoundInputDevice(SoundDevice):
-    def __init__(self, name, device_config, verbose=0):
-        SoundDevice.__init__(self, name, device_config, verbose)
-
-        # Settings
-        self.type = 'input'
-
-        # Create JACK client
-        try:
-            jack_client = jack.Client('PythonJackClient', no_start_server=True)
-        except jack.JackError:
-            raise(EnvironmentError("Jack server not started"))
-
-        # Check JACK ports
-        self._client_name = device_config.get('ClientName', DEFAULT_INPUT_DEVICE['ClientName'])
-        self._port_name = device_config.get('PortName', DEFAULT_INPUT_DEVICE['PortName'])
-        input_port = '{}:{}'.format(self._client_name, self._port_name)
-        if not jack_client.get_ports(input_port, is_output=True):
-            raise EnvironmentError('JACK capture port {} not found.'.format(input_port))
-        
-        # Close client
-        jack_client.close()
-
-    @property
-    def client_name(self):
-        return self._client_name
-
-    @property
-    def port_name(self):
-        return self._port_name
-
-class SoundOutputDevice(SoundDevice):
-
-    def __init__(self, name, device_config, verbose=0):
-        SoundDevice.__init__(self, name, device_config, verbose)
-
-        # Settings
-        self.type = 'output'
-
-        # Create JACK client
-        try:
-            jack_client = jack.Client('PythonJackClient', no_start_server=True)
-        except jack.JackError:
-            raise(EnvironmentError("Jack server not started"))
-        
-        # Check JACK ports
-        self._client_name = device_config.get('ClientName', DEFAULT_OUTPUT_DEVICE['ClientName'])
-        self._port_name = device_config.get('PortName', DEFAULT_OUTPUT_DEVICE['PortName'])
-        output_port = '{}:{}'.format(self.client_name, self.port_name)
-        if not jack_client.get_ports(output_port, is_input=True):
-            raise EnvironmentError('JACK playback port {} not found.'.format(output_port))
-
-        # Check OSC port (warning or exception?)
-        self.osc_port = device_config.get('OscPort', DEFAULT_OUTPUT_DEVICE['OscPort'])
-        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            try:
-                s.bind((socket.gethostname(), self.osc_port))
-            except OSError as e:
-                if e.errno == 98:
-                    warnings.warn('OscPort {} already in use.'.format(self.osc_port))
-
-        # Get minimixer channel
-        self.channel = device_config.get('MinimixerChannel', DEFAULT_OUTPUT_DEVICE['MinimixerChannel']).lower()
-        if self.channel not in ['left', 'right']:
-            raise ValueError('Minimixer channel must be \'left\' or \'right\' but is \'{}\''.format(self.channel))
-            
-        # Handle the minimixer already running
-        self.minimixer = 'minimixer-{}'.format(self.name)
-        if not jack_client.get_ports(self.minimixer, is_input=True): # minimix not started
-            # Start minimixer with device parameters
-            minimixer_cmd = ['/usr/local/bin/jackminimix', 
-                             '-{}'.format(self.channel[0]), '{}:{}'.format(self.client_name, self.port_name), 
-                             '-p', '{}'.format(self.osc_port),
-                             '-n', self.minimixer]
-            if (self.verbose > 1):
-                self.p_minimix = Popen(minimixer_cmd)
-            else:
-                self.p_minimix = Popen(minimixer_cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-            # Check for connection
-            for i in range(5):
-                if jack_client.get_ports(self.minimixer, is_input=True):
-                    break
-                time.sleep(1.0)
-            if jack_client.get_ports(self.minimixer, is_input=True):
-                print('JACK {} started'.format(self.minimixer))
-            else:
-                raise(EnvironmentError("Could not start minimixer"))
-        else:
-            print('Connecting to existing minimixer instance.')
-
-        # Close client
-        jack_client.close() 
-
-    @property
-    def client_name(self):
-        return self._client_name
-
-    @property
-    def port_name(self):
-        return self._port_name
-
-    def _close(self, timeout=10.0):
-        if self.p_minimix:
-            self.p_minimix.send_signal(signal.SIGINT)
-            try:
-                if self.p_minimix.wait(timeout) != 0:
-                    warnings.warn('Error closing {}.'.format(self.minimixer))
-                elif self.verbose > 2:
-                    print('Closed {}.'.format(self.minimixer))
-            except TimeoutError:
-                warnings.warn('{} timed out. Killing process...'.format(self.minimixer))
-                self.p_minimix.kill()
-            self.p_minimix = None
+        print('SoundStimulController exiting. Waiting for ALSA processes to join.')
+        # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
+        #self.alsa_playback_pipe.send_bytes(pickle.dumps({'StopMessage': True}))
+        self._audio_playback_process.join()
+        self._audio_record_process.join()
 
 
 class SoundStimulus():
-    def __init__(self, stimulus_params, file_root, device, verbose):
+    def __init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+        self.name = stimulus_name
+        self.alsa_playback_pipe = alsa_playback_pipe
+
         # Gain parameters
         if 'BaselineGain' in stimulus_params:
             self.baseline_gain = stimulus_params['BaselineGain']
@@ -402,76 +188,11 @@ class SoundStimulus():
         else:
             self.off_gain = -90.0 
 
-        # File settings
-        self.name = stimulus_params['Name']
-        filename = stimulus_params['Filename']
-        if file_root is not None:
-            filename = os.path.join(file_root, filename)
-        if not os.path.isfile(filename):
-            raise(ValueError("Sound file {} could not be found.".format(filename)))
-        else:
-            if verbose > 1:
-                print('Loading: {}'.format(filename))
-        self.filename = filename
-
-        # Set up JACK environment
-        self.p_jackplay = None # in case del called before init complete
-        jack_client = jack.Client('PythonJackClient', no_start_server=True)
-
-        # Minimixer input port (1, 2, 3, ...)
-        if device.type.lower() != 'output':
-            raise EnvironmentError('Stimulus must be assigned to output device.')
-        minimixer = device.minimixer
-        channel = device.channel
-        if 'MinimixerInputPort' in stimulus_params:
-            inputPort = stimulus_params['MinimixerInputPort']
-            portName = '{}:in{}_{}'.format(minimixer, inputPort, channel)
-            if jack_client.get_all_connections(portName):
-                raise(ValueError("Specified port {} is already connected".format(portName)))
-        else: # Auto assign a new minimxer port to this stimulus
-            availablePortNames = [p.name for p in jack_client.get_ports('{}:'.format(minimixer), is_input=True)]
-            if availablePortNames is None:
-                raise(EnvironmentError("Jack minimix appears not to be running."))
-            inputPort = 1
-            portName = '{}:in{}_{}'.format(minimixer, inputPort, channel)            
-            while portName in availablePortNames:
-                if not jack_client.get_all_connections(portName):
-                    self.inputPort = inputPort
-                    break;
-                else:
-                    inputPort = inputPort + 1
-                    portName = '{}:in{}_{}'.format(minimixer,inputPort,channel)
-            
-        if not jack_client.get_ports(portName):
-            raise(EnvironmentError("Not enough minimixer ports. Restart with 'MaximumNumberOfStimuli' of at least {}".format(inputPort)))
-        else:
-            if (verbose > 1):
-                print('Input port: {}'.format(inputPort))
-
-        # Save minimixer settings
-        self.device = device
-        self.inputPort = inputPort
-        self.portName = portName
-
-        jack_client.close()
-
         # Set gain prior to playing sound
         self.gain = self.off_gain # NOTE: Is it easier to have sounds off initially?
-        self.oscC = OSCClient('127.0.0.1', int(device.osc_port))
-        self.oscC.send_message(b'/mixer/channel/set_gain',[int(self.inputPort), self.gain])
+        self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: db2lin(self.gain)}))
 
-        # Play sound
-        jackplay_cmd = ['/usr/local/bin/sndfile-jackplay', '-l0', '-a={}'.format(self.portName), '{}'.format(self.filename)]
-        if (verbose > 1):
-            print(jackplay_cmd)
-        if verbose > 2:
-            self.p_jackplay = Popen(jackplay_cmd)
-        else:
-            self.p_jackplay = Popen(jackplay_cmd, stdout=DEVNULL, stderr=DEVNULL)
-
-        # Save variables for class methods
-        self.minimixer = minimixer
-        self.channel = channel
+        self.device = stimulus_params['Device']
         self.verbose = verbose
 
         # Pipe for updating viewer
@@ -484,34 +205,32 @@ class SoundStimulus():
 
     def change_gain(self, gain):
         if gain != self.gain:
-            self.oscC.send_message(b'/mixer/channel/set_gain',[int(self.inputPort), gain])
+            self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: db2lin(gain)}))
             self.gain = gain
 
         if self._viewer_conn:
             update_dict = {self.name: gain, 'priority': 1}
             self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
-    def close_processes(self, timeout=10.0):
-        if self.p_jackplay:
-            msg_name = 'jackplay-{} on '.format(self.name, self.portName)
-            self.p_jackplay.send_signal(signal.SIGINT)
-            try:
-                if self.p_jackplay.wait(timeout) != 0:
-                    warnings.warn('Error closing {}.'.format(msg_name))
-                elif self.verbose > 2:
-                    print('Closed {}.'.format(msg_name))
-            except TimeoutError:
-                warnings.warn('{} timed out. Killing process...'.format(msg_name))
-                self.p_jackplay.kill()
-            self.p_jackplay = None
+    def change_gain_raw(self, gain):
+        if gain != self.gain:
+            self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: gain}))
+            self.gain = gain
 
-    def __del__(self):
-        self.close_processes()
+        if self._viewer_conn:
+            update_dict = {self.name: gain, 'priority': 1}
+            self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
+    @classmethod
+    def valid(self, name, config):
+        if not ('Device' in config):
+            return False, ValueError('Config file processing error: {} is missing "Device" parameter.'.format(name))
+
+        return True, None
 
 class LocalizedSound(SoundStimulus):
-    def __init__(self, track_length, stimulus_params, file_root, device, verbose):
-        SoundStimulus.__init__(self, stimulus_params, file_root, device, verbose)
+    def __init__(self, track_length, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
 
         # TODO check that these are all set. I need to know my name in order to give
         #  a meaningful warning, though.
@@ -521,7 +240,6 @@ class LocalizedSound(SoundStimulus):
         self.trackLength = track_length
         self.maxGain = self.baseline_gain
         self.minGain = stimulus_params['Modulation']['CutoffGain']
-
 
     def linear_gain_from_pos(self, pos):
         relpos = (pos - self.center) % self.trackLength
@@ -545,12 +263,33 @@ class LocalizedSound(SoundStimulus):
         else:
             new_gain = (1 - abs(relpos/self.half)) * (self.maxGain - self.minGain) + self.minGain
 
-        SoundStimulus.change_gain(self, new_gain)
+        return new_gain
+        #SoundStimulus.change_gain(self, new_gain)
+
+    @classmethod
+    def valid(self, name, config):
+        base_valid, error = super(LocalizedSound, cls).valid(config)
+
+        if not base_valid:
+            return False, error
+        if not ('CenterPosition' in config):
+            return False, ValueError('Config file processing error: {} is missing "CenterPosition" parameter.'.format(name))
+        if not ('Modulation' in config):
+            return False, ValueError('Config file processing error: {} is missing "Modulation" parameters.'.format(name))
+        if not ('Width' in config['Modulation']):
+            return False, ValueError('Config file processing error: {} is missing "Modulation" parameters.'.format(name))
+        if not ('Width' in config['Modulation']):
+            return False, ValueError('Config file processing error: {} is missing "Modulation: Width" parameter.'.format(name))
+        if not ('CutoffGain' in config['Modulation']):
+            return False, ValueError('Config file processing error: {} is missing "Modulation: CutoffGain" parameter.'.format(name))
+
+        return True, None
+
 
 
 class BeepSound(SoundStimulus):
-    def __init__(self, stimulus_params, file_root, device, verbose):
-        SoundStimulus.__init__(self, stimulus_params, file_root, device, verbose)
+    def __init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
         if 'Duration' in stimulus_params:
             self.duration = stimulus_params['Duration']
         else:
@@ -571,5 +310,55 @@ class BeepSound(SoundStimulus):
     def update(self, time):
         if self.is_playing:
             if (time > self.time_beep_off):
-                SoundStimulus.change_gain(self,self.off_gain)
                 self.is_playing = False
+                # SoundStimulus.change_gain(self,self.off_gain)
+                return self.off_gain
+        return None # if we didn't already return!
+
+    @classmethod
+    def valid(cls, config):
+        base_valid, error = super(BeepSound, cls).valid(config)
+        if not base_valid:
+            return False, error
+        if not ('Duration' in config):
+            return False, ValueError('Config file processing error: {} is missing "Duration" parameter.'.format(name))
+        return True, None
+
+
+
+
+def validate_sound_config(config):
+    # What do we want to test:
+    #   After we optionally specified defaults, SoundStimuli have all the proper settings
+    #   Device defaults set
+    #   SoundStimuli have a "Device" that matches DeviceList/Device/ChannelLabels/***
+
+    # First - normalize the Stimuli and Devices
+    OutputDevices = []
+    for dev_name, dev in config['DeviceList'].items():
+        if dev['Type'] == 'Output':
+            config['DeviceList'][dev_name] = normalize_output_device(config['DeviceList'][dev_name])
+            OutputDevices.extend(config['DeviceList'][dev_name]['ChannelLabels'].keys())
+        if dev['Type'] == 'Input':
+            config['DeviceList'][dev_name] = normalize_input_device(config['DeviceList'][dev_name])
+
+    config['StimuliList'] = look_for_and_add_stimulus_defaults(config)
+
+    for stim_name, stim in config['StimuliList'].items():
+        if stim['Type'] == 'Background':
+            valid, error = SoundStimulus.valid(stim_name, stim)
+        elif stim['Type'] == 'Localized':
+            valid, error = LocalizedSound.valid(stim_name, stim)
+        elif stim['Type'] == 'Beep':
+            valid, error = BeepSound.valid(stim_name, stim)
+        else:
+            raise(ValueError('Sound stimulus {} has an unknown stimulus type {}.'.format(stim_name, stim)))
+        if not valid:
+            raise(error)
+
+        if not stim['Device'] in OutputDevices:
+            raise(ValueError("Sound stimulus {} names a device ({}) that is not specified as the channel of a device.".format(stim_name, stim['Device'])))
+
+
+    
+

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #%%
 # NOTE: v2.1.1. 3 different Tones (3kHz, 6kHz, 12kHz) are played based on animal's position on the virtual track. 
@@ -27,14 +27,8 @@ from contextlib import ExitStack
 
 
 NamedVersion = '1.0'
+Profiling = True
 
-
-import git
-repo = git.Repo(search_parent_directories=True)
-
-GitCommit = repo.head.object.hexsha
-GitChangedFiles = [fn.a_path for fn in repo.index.diff(None)]
-GitPatch = [fn.diff for fn in repo.index.diff(None, create_patch=True)]
 
 ### Maybe should add argcomplete for this program?
 
@@ -47,26 +41,65 @@ parser.add_argument('-C','--param-file', default='defaults.yaml',
                     help='YAML file containing task parameters')
 parser.add_argument('-R','--random-seed', default=None,  
                     help='Random seed. If specified, this also overrides the YAML configuration file.')
-parser.add_argument('--output-dir', default='./',
+parser.add_argument('--output-dir', default=None,
                     help='Directory to write output file (defaults to cwd)')
+
+
 args = parser.parse_args()
-if not os.path.isdir(args.output_dir):
-    os.mkdir(args.output_dir)
-if not args.output_dir.endswith('/'):
-    args.output_dir += '/'
 print(args)
 
-now = datetime.datetime.now()
-log_filename = '{}{}.txt'.format('Log', now.strftime("%Y-%m-%d %H%M"))
-log_filename = os.path.join(args.output_dir, log_filename)
+if args.param_file == 'defaults.yaml':
+    warnings.warn('Using default configuration file. That is almost certainly not what you want to do!')
 
 # YAML parameters: task settings
 with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
-DoLogCommands = False
+# ------------------- Validate config file-------------------------------------------------------------
+from treadmillio.soundstimulus import validate_sound_config
+
+if 'AuditoryStimuli' in Config:
+    validate_sound_config(Config['AuditoryStimuli'])
+
+# ------------------- Setup logging. ------------------------------------------------------------------
+DoLogCommands = True
 if 'LogCommands' in Config['Preferences']:
     DoLogCommands = Config['Preferences']['LogCommands']
+
+if DoLogCommands:
+    auto_log_directory = Config['Preferences'].get('AutoLogDirectory', True) if 'Preferences' in Config else True
+
+    log_directory = Config['Preferences'].get('LogDirectory', None) if 'Preferences' in Config else None
+    if log_directory is not None and args.output_dir is not None:
+        warnings.warn('The configuration file specifies {} for logging, '
+                'but command line has {}. Using command line!\n'.format(log_directory, args.output_dir))
+        log_directory = args.output_dir
+    elif auto_log_directory:
+        now = datetime.datetime.now()
+        log_directory = '{}{}'.format('ExperimentLog', now.strftime("%Y-%m-%d_%H%M"))
+    else:
+        raise(ValueError('You did not specify a directory for experiment logs, and AutoLogDirectory is False.'))
+
+    if not os.path.isabs(log_directory):
+        log_directory = os.path.join(os.getcwd(), log_directory)
+
+    orig_log_directory = log_directory
+    k=1
+    while os.path.exists(log_directory):
+        k = k + 1
+        log_directory = orig_log_directory + '_' + str(k)
+
+    if log_directory != orig_log_directory:
+        warnings.warn('Specified experiment logs directory {} exists, using {}'.format(orig_log_directory, log_directory))
+
+    print('Creating log directory: {}\n'.format(log_directory))
+    os.makedirs(log_directory)
+
+else:
+    print('#'*80, '\n')
+    print('Warning!!! Not logging!!!!')
+    print('#'*80, '\n')
+
 
 EnableSound = False
 if 'EnableSound' in Config['Preferences']:
@@ -84,7 +117,6 @@ elif 'RandomSeed' in Config['Preferences']:
     print(f"Setting random seed to {Config['Preferences']['RandomSeed']}.")
 
 
-
 #----------------------- parameters --------------
 TrackTransform = None
 
@@ -99,13 +131,14 @@ if 'Maze' in Config:
     if 'EncoderGain' in Config['Maze']:
         encoder_gain = Config['Maze']['EncoderGain']
 
+
 #----------------------- Sound stimuli --------------
 
 from treadmillio.soundstimulus import SoundStimulusController
 
 with ExitStack() as stack:
     if 'AuditoryStimuli' in Config and EnableSound:
-        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length))
+        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length, log_directory))
     else:
         SoundController = None
         if 'AuditoryStimuli' in Config:
@@ -139,28 +172,46 @@ with ExitStack() as stack:
     else:
         RewardZones = None
 
-    # -------------------------- Start logging and stimulus connection -------------------------------------
-    log_file = stack.enter_context(open(log_filename, 'w', newline=''))
 
-    ##### Write header to log file
-    print(f'VisualStimulusExperiment Data File.\n   Version {NamedVersion}',file=log_file)
-    print(f'   Git Commit: {GitCommit}',file=log_file)
-    if GitChangedFiles:
-        print(f'   ChangedFiles: {GitChangedFiles}',file=log_file)
-        print(f'Patch:\n{GitPatch}',file=log_file)
-    print('---',file=log_file)
-    yaml.dump(Config, log_file, indent=4)
-    print('---\n', file=log_file)
+    if DoLogCommands:
+        # -------------------------- Set up all the different log files -------------------------------------
+        # Log git diffs for provenance
 
-    ##### Logging is actually CSV format
-    writer = csv.writer(log_file)
+        import git
+        repo = git.Repo(search_parent_directories=True)
 
-    Profiling = True
-    if Profiling:
-        execution_log = stack.enter_context(open('execution.csv', 'w', newline=''))
-        execution_writer = csv.writer(execution_log)
+        GitCommit = repo.head.object.hexsha
+        GitChangedFiles = [fn.a_path for fn in repo.index.diff(None)]
+        GitPatch = [fn.diff for fn in repo.index.diff(None, create_patch=True)]
+
+        with open(os.path.join(log_directory, 'ExperimentCodeDiffs.txt'), 'w') as git_file:
+            print(f'   Git Commit: {GitCommit}',file=git_file)
+            if GitChangedFiles:
+                print(f'   ChangedFiles: {GitChangedFiles}',file=git_file)
+                print(f'Patch:\n{GitPatch}',file=git_file)
+
+        # Log config file used
+        with open(os.path.join(log_directory, 'ParsedConfig.yaml'), 'w') as yaml_file:
+            yaml.dump(Config, yaml_file, indent=4)
+            
+        # Create data log file and write header
+        log_file = stack.enter_context(open(os.path.join(log_directory, 'DataLog.csv'), 'w', newline=''))
+        print(f'Experiment Data File.\n   Version {NamedVersion}',file=log_file)
+        log_writer = csv.writer(log_file) # logging is actually CSV format
+
+
+        if StateMachine and DoLogCommands:
+            # Create state machine log file and write header
+            state_machine_log = stack.enter_context(open(os.path.join(log_directory, 'StatemachineLog.csv'), 'w', newline=''))
+            print(f'State Machine Log File.\n   Version {NamedVersion}',file=state_machine_log)
+            state_log_writer = csv.writer(state_machine_log)
+
+        if Profiling:
+            execution_log = stack.enter_context(open(os.path.join(log_directory, 'execution.csv'), 'w', newline=''))
+            execution_writer = csv.writer(execution_log)
+
+
     # ----------------- Initialization
-
     ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
     Interface.connect()
 
@@ -168,7 +219,7 @@ with ExitStack() as stack:
     initialUnwrappedencoder = UnwrappedEncoder
 
     if SoundController:
-        SoundController.start_capture(args.output_dir)
+        SoundController.start_capture() # TODO: This doesn't currently do anything
 
     if StateMachine:
         StateMachine.start(MasterTime)
@@ -179,7 +230,8 @@ with ExitStack() as stack:
         last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
-        writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
+        if DoLogCommands:
+            log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
         if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
             print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}')
@@ -191,7 +243,10 @@ with ExitStack() as stack:
             SoundController.update_beeps(MasterTime) # stop any outstanding beeps
 
         if StateMachine:
-            StateMachine.update_statemachine(writer.writerow) # update the state machine
+            if DoLogCommands:
+                StateMachine.update_statemachine(state_log_writer.writerow) # update the state machine
+            else:
+                StateMachine.update_statemachine(None) # update the state machine
 
         unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
         pos = unwrapped_pos % virtual_track_length
@@ -202,7 +257,7 @@ with ExitStack() as stack:
         if RewardZones:
             RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
 
-        if Profiling:
+        if Profiling and DoLogCommands:
             exec_time = time.monotonic() - last_ts
             execution_writer.writerow([exec_time])
 

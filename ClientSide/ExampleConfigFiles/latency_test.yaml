@@ -1,0 +1,131 @@
+
+# The point of this file is to make it easy to test latency of sound onset from a GPIO signal.
+# The state machine starts by triggering a pulse on the PulsePin GPIO.
+# It then transitions to a state where another pin SensePin is set to trigger a transition
+# to a set-gpio state and then a sound playing state if it's input is high, and a no-sound 
+# state if it's input is low.The state machine then goes to a sound off / delay state, and 
+# then cycles back. If the two pins are physically connected, we should hear a train of beeps, 
+# and if they aren't, we should hear nothing.
+#
+# Latency can be measured by hooking the oscilloscope up to the PulsePin's mirror pin
+# and to the sound. Setting the oscilloscope to trigger on the PulsePin, the time until
+# the sound waveform is detected is the system latency. The ResposnePin should be activated
+# 4 ms (two clock periods) following the PulsePin, and then ideally, the sound should start
+# exactly 2 ms (one clock period) later. With our current system, it's starting ~7 ms later.
+# That implies a latency of 7 + 2 = 11 ms from when the pulse is initially generated.
+
+Preferences:
+  HeartBeat: 10000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: True
+  AutoLogDirectory: True
+  #LogDirectory: 'Something/Something'
+
+GPIO: # A list of GPIO pins used in the task
+  PulsePin:
+    Number: 1
+    Type: 'Output'
+    Mirror: True 
+  SensePin: 
+    Number: 2 
+    Type: 'Input'
+    Power: False
+  ResponsePin:
+    Number: 3
+    Type: 'Output'
+    Mirror: True 
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+AuditoryStimuli:
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
+  
+  StimuliList:
+    TestBeep: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      BaselineGain: 3.0
+      Filename: 'tone_3kHz.wav'
+      Color: 'pink' # Matplotlib color name used for visualization system
+      Device: 'Speaker1' # or single device, or list of devices
+
+  DeviceList:
+    Output1:
+      Type: 'Output' # Input or Output
+      HWDevice: 'hw:CARD=Creative,DEV=0'
+      BufferSize: 16
+      NPeriods: 2
+      NChannels: 2
+      ChannelLabels:
+        Speaker1: 1
+    Microphone1:
+      Type: 'Input'
+      HWDevice: 'hw:CARD=Creative,DEV=0'
+      NChannels: 2
+      SamplingRate: 96000 # I'd like to autodetect from playback, but this would require communication between processes
+      BufferSize: 1024 
+      Record: True
+      FilenameHeader: ''
+
+
+StateMachine:
+  States:
+    GPIO_Off:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'PulsePin'
+        Value: 0
+      NextState: 'OtherGPIO_Off'
+    OtherGPIO_Off:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'ResponsePin'
+        Value: 0
+      NextState: 'SoundOff'
+    SoundOff: # Turn sound off
+      FirstState: True
+      Type: 'SetSoundState'
+      Params: # allow single value or list format; not sure if this is best syntax
+        TestBeep: 'Off'
+      NextState: 
+        RaiseGPIO:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+          Priority: 1
+    RaiseGPIO:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'PulsePin'
+        Value: 1
+      NextState: 
+        GPIO_Off:
+          ConditionType: 'ElapsedTime'
+          Duration: 10
+          Priority: 1
+        SignalGPIO:
+          ConditionType: 'GPIO'
+          Pin: 2 #'SensePin'
+          Value: True
+          Priority: 2
+    SignalGPIO:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'ResponsePin'
+        Value: 1
+      NextState: 'LowerPulse'
+    LowerPulse:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'PulsePin'
+        Value: 0
+      NextState: 'PlaySound'
+    PlaySound:
+      Type: 'SetSoundState'
+      Params:
+        TestBeep: 'On'
+      NextState:
+        GPIO_Off:
+            ConditionType: 'ElapsedTime'
+            Duration: 500
+            Priority: 1
