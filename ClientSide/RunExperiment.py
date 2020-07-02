@@ -74,6 +74,8 @@ if DoLogCommands:
         warnings.warn('The configuration file specifies {} for logging, '
                 'but command line has {}. Using command line!\n'.format(log_directory, args.output_dir))
         log_directory = args.output_dir
+    elif args.output_dir is not None:
+        log_directory = args.output_dir
     elif auto_log_directory:
         now = datetime.datetime.now()
         log_directory = '{}{}'.format('ExperimentLog', now.strftime("%Y-%m-%d_%H%M"))

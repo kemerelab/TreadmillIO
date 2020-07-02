@@ -51,6 +51,8 @@ class SoundStimulusController():
         #       otherwise, the process will be exit without the main program
         #       realizing it.
 
+        self._audio_playback_process = None
+        self._record_playback_process = None
         if 'DeviceList' in sound_config:
             for dev_name, dev in sound_config['DeviceList'].items():
                 if dev['Type'] == 'Output':
@@ -59,10 +61,7 @@ class SoundStimulusController():
                                                 sound_config['AudioFileDirectory'], _playback_read_pipe, log_directory))
                     self._audio_playback_process.daemon = True
                     self._audio_playback_process.start()     # Launch the sound process
-
-        if 'DeviceList' in sound_config:
-            for dev_name, dev in sound_config['DeviceList'].items():
-                if dev['Type'] == 'Input':
+                elif dev['Type'] == 'Input':
                     self._record_playback_process = Process(target=run_audio_record_process, args=(dev_name, dev, log_directory))
                     self._record_playback_process.daemon = True
                     self._record_playback_process.start()     # Launch the sound process
@@ -168,8 +167,10 @@ class SoundStimulusController():
         print('SoundStimulController exiting. Waiting for ALSA processes to join.')
         # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
         #self.alsa_playback_pipe.send_bytes(pickle.dumps({'StopMessage': True}))
-        self._audio_playback_process.join()
-        self._audio_record_process.join()
+        if self._audio_playback_process:
+            self._audio_playback_process.join()
+        if self._record_playback_process:
+            self._record_playback_process.join()
 
 
 class SoundStimulus():
