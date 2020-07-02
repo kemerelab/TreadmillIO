@@ -49,6 +49,9 @@ class SoundStimulusController():
         #       otherwise, the process will be exit without the main program
         #       realizing it.
 
+        self._audio_playback_process = None
+        self._audio_record_process = None
+
         if 'DeviceList' in sound_config:
             for dev_name, dev in sound_config['DeviceList'].items():
                 if dev['Type'] == 'Output':
@@ -162,11 +165,14 @@ class SoundStimulusController():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        print('SoundStimulController exiting. Waiting for ALSA processes to join.')
+        print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
+        print('SoundStimulController waiting for ALSA processes to join. TODO: Handle other than KeyboardInterrupt!')
         # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
         #self.alsa_playback_pipe.send_bytes(pickle.dumps({'StopMessage': True}))
-        self._audio_playback_process.join()
-        self._audio_record_process.join()
+        if self._audio_playback_process:
+            self._audio_playback_process.join()
+        if self._audio_record_process:
+            self._audio_record_process.join()
 
 
 class SoundStimulus():
@@ -203,7 +209,7 @@ class SoundStimulus():
             self.gain = gain
 
     @classmethod
-    def valid(self, name, config):
+    def valid(cls, name, config):
         if not ('Device' in config):
             return False, ValueError('Config file processing error: {} is missing "Device" parameter.'.format(name))
 
@@ -248,8 +254,8 @@ class LocalizedSound(SoundStimulus):
         #SoundStimulus.change_gain(self, new_gain)
 
     @classmethod
-    def valid(self, name, config):
-        base_valid, error = super(LocalizedSound, cls).valid(config)
+    def valid(cls, name, config):
+        base_valid, error = super(LocalizedSound, cls).valid(name, config)
 
         if not base_valid:
             return False, error
@@ -297,8 +303,8 @@ class BeepSound(SoundStimulus):
         return None # if we didn't already return!
 
     @classmethod
-    def valid(cls, config):
-        base_valid, error = super(BeepSound, cls).valid(config)
+    def valid(cls, name, config):
+        base_valid, error = super(BeepSound, cls).valid(name, config)
         if not base_valid:
             return False, error
         if not ('Duration' in config):

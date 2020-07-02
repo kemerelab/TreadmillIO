@@ -34,7 +34,7 @@ class SerialInterface():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        print('Caught SIGINT in SerialInterface')
+        print('SerialInterface: exiting because of exception <{}>'.format(exc_type.__name__))
         if (self.serial):
             self.serial.close()
 

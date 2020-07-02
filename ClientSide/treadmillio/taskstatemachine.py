@@ -5,8 +5,6 @@ import warnings
 import zmq
 import random
 
-import pygraphviz
-
 class StateTransitionCondition:
     def __init__(self, label, state_config, io_interface):
         self.label = label
@@ -921,6 +919,7 @@ class TaskStateMachine():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
+        print('TaskStateMachine: exiting because of exception <{}>'.format(exc_type.__name__))
         if self.socket:
             self.socket.close()
 
@@ -954,6 +953,8 @@ class TaskStateMachine():
 
 
     def render(self, filename):
+        import pygraphviz
+
         G = pygraphviz.AGraph(directed=True, rankdir='LR', type='UTF-8')
         for state_name, state in self.StateMachineDict.items():
             G.add_node(state.label, label='<'+state.get_graph_label()+'>',shape='box')
