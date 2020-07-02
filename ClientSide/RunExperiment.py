@@ -172,7 +172,6 @@ with ExitStack() as stack:
     else:
         RewardZones = None
 
-
     if DoLogCommands:
         # -------------------------- Set up all the different log files -------------------------------------
         # Log git diffs for provenance
@@ -210,6 +209,23 @@ with ExitStack() as stack:
             execution_log = stack.enter_context(open(os.path.join(log_directory, 'execution.csv'), 'w', newline=''))
             execution_writer = csv.writer(execution_log)
 
+
+    # ------------------- Webcam Video Recording. ------------------------------------------------------------------
+    if 'Cameras' in Config:
+        from treadmillio.webcam.webcam import RunCameraInterface
+        if DoLogCommands:
+            for camera in Config['Cameras'].items():
+                camera['LogDirectory'] = log_directory
+        else:
+            for camera in Config['Cameras'].items():
+                if camera['RecordVideo']:
+                    print('Over-riding camera configuration to not record video or timestamps!!!')
+                camera['RecordVideo'] = False
+
+        for camera in Config['Cameras'].items():
+            camera_process = multiprocessing.Process(target=RunCameraInterface, args=(camera))
+            camera_process.daemon = True
+            camera_process.start()     # Launch the camera frame acquisition process
 
     # ----------------- Initialization
     ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer

@@ -1,17 +1,19 @@
+
+import sys, os, setproctitle, signal, time
+
 import uvc
+import skvideo.io
 import logging
+
+import multiprocessing
+import queue
+import csv
+import numpy as np
+
 import pyglet
 from pyglet.gl import *
 from pyglet.window import key
-import numpy as np
-import time
-import multiprocessing
-#from multiprocessing import Process, Pipe, Value, Queue, Event, current_process
-import queue
-import setproctitle
-import signal
-import skvideo.io
-import csv
+
 
 def check_shm(shm_var):
     with shm_var.get_lock():
@@ -24,18 +26,23 @@ def set_shm(shm_var):
 
 
 class VideoWriter():
-    def __init__(self, filename_header, frame_queue, terminate_flag, done_flag):
+    def __init__(self, config, frame_queue, terminate_flag, done_flag):
         self._terminate_flag = terminate_flag
         self._done_flag = done_flag
         self._frame_queue = frame_queue
 
-        filename = 'video' + str(filename_header) + '.mp4'
-        self._writer = skvideo.io.FFmpegWriter(filename, outputdict={
+        filename_header = config['FilenameHeader']
+        log_directory = config['LogDirectory']
+        if not os.path.isdir(log_directory):
+            raise(ValueError('VideoWriter LogDirectory [{}] not found.'.format(log_directory)))
+
+        video_filename = os.path.join(log_directory, '{}.mp4'.format(filename_header))
+        self._writer = skvideo.io.FFmpegWriter(video_filename, outputdict={
             #'-vcodec': 'libx264', '-b': '300000000'
             '-vcodec': 'libx264', '-crf': '27', '-preset': 'veryfast'
         })
 
-        timestamps_filename = 'vid_timestamps' + str(filename_header) + '.csv'
+        timestamps_filename = os.path.join(log_directory, '{}_timestamps.csv'.format(filename_header))
         self._ts_file = open(timestamps_filename, 'w')
         self._ts_writer = csv.writer(self._ts_file, delimiter=',')
 
@@ -80,29 +87,49 @@ class VideoWriter():
 
 
 class CameraInterface():
-    def __init__(self, which_camera, image_format, frame_queues, terminate_flag, done_flag):
-        logging.basicConfig(level=logging.INFO)
+    def __init__(self, config, frame_queues, terminate_flag, done_flag):
         self._terminate_flag = terminate_flag
         self._done_flag = done_flag
-
         self._queues = frame_queues
 
+        which_camera = config['CameraIndex']
+        self.sy = config['ResY']
+        self.sx = config['ResX']
+        self.frame_rate = config['FrameRate']
+
+        self.number_of_channels = 3 # TODO: Consider handling mono?
+
+        logging.basicConfig(level=logging.INFO)
+
+
         dev_list = uvc.device_list()
-        for dev in dev_list:
-            print(dev)
-            print(dev["uid"])
+        print('Available cameras (*** selected):')
+        for idx, dev in enumerate(dev_list):
+            if idx == which_camera:
+                print('*** ', dev) # Highlight the selected camera in the list
+            else:
+                print('    ', dev)
 
         self._cap = uvc.Capture(dev_list[which_camera]["uid"])
 
         self._cap.bandwidth_factor = 4
 
-        print(self._cap.avaible_modes)
-        for c in self._cap.controls:
-            print(c.display_name)
+        print('Available resolutions (*** selected):')
+        for mode in self._cap.avaible_modes:
+            if mode == (self.sx, self.sy, self.frame_rate):
+                print("\n*** {} ***".format(mode))
+            else:
+                print("{}".format(mode), end=" ")
+        self._cap.frame_mode = (self.sx, self.sy, self.frame_rate)
 
-        self.sy, self.sx, self.number_of_channels = image_format # (720, 1280, 3)
-        self._cap.frame_mode = (self.sx, self.sy, 30)
-        self.frame_rate = 30
+        print("\nCamera Controls (*** set as specified in CameraParams)")
+        for c in self._cap.controls:
+            if 'CameraParams' in config:
+                if c.display_name in config['CameraParams']:
+                    c.value = config['CameraParams'][c.display_name]
+                    print("*** {}: {}".format(c.display_name, c.value))
+                else:
+                    print("    {}: {}".format(c.display_name, c.value))
 
     def run(self):
         try:
@@ -137,13 +164,16 @@ class CameraInterface():
     
 
 class VideoDisplay(pyglet.window.Window):
-    def __init__(self, image_format, frame_queue, quit_flag):
+    def __init__(self, config, frame_queue, quit_flag, no_escape=True):
         self._quit_flag = quit_flag
         self._frame_queue = frame_queue
 
-        self.sy, self.sx, self.number_of_channels = image_format # (720, 1280, 3)
+        self.sy = config['ResY']
+        self.sx = config['ResX']
+        self.number_of_channels = 3 # TODO: Consider handling mono?
+
         super().__init__(visible=True, resizable=True)
-        #super().__init__(width=self.sx, height=self.sy,visible=True)
+        #super().__init__(width=self.sx, height=self.sy, visible=True)
 
         initial_texture = 128*np.ones((self.sy, self.sx, self.number_of_channels), dtype='uint8')
         self._img = pyglet.image.ImageData(self.sx,self.sy,'BGR',
@@ -152,13 +182,18 @@ class VideoDisplay(pyglet.window.Window):
         self._tex = self._img.get_texture()
         self.alive = True
 
+        self._no_escape = no_escape
+
     def on_key_press(self, symbol, modifiers):
         if symbol == key.ESCAPE:
-            print('Application Exited with Key Press')
-            self.graceful_shutdown()
+            if not self._no_escape:
+                print('Application Exited with Key Press')
+                self.graceful_shutdown()
+            
 
     def update(self, dt):
-        pass
+        if check_shm(self._quit_flag):
+            self.graceful_shutdown()
 
     def on_draw(self):
         while not self._frame_queue.empty():
@@ -192,50 +227,49 @@ class VideoDisplay(pyglet.window.Window):
         self.close()
 
 
-def start_camera(camera, image_format, frame_queues, terminate_flag, done_flag):
+def start_camera(config, frame_queues, terminate_flag, done_flag):
     multiprocessing.current_process().name = "Camera"
     setproctitle.setproctitle(multiprocessing.current_process().name)
-    with CameraInterface(camera, image_format, frame_queues, terminate_flag, done_flag) as camera:
+    with CameraInterface(config, frame_queues, terminate_flag, done_flag) as camera:
         camera.run()
     return
 
-def start_writer(header, frame_queue, terminate_flag, done_flag):
+def start_writer(config, frame_queue, terminate_flag, done_flag):
     multiprocessing.current_process().name = "Writer"
     setproctitle.setproctitle(multiprocessing.current_process().name)
-    with VideoWriter(header, frame_queue, terminate_flag, done_flag) as vwriter:
+    with VideoWriter(config, frame_queue, terminate_flag, done_flag) as vwriter:
         vwriter.run()
     return
 
+def RunCameraInterface(config, no_escape=True):
+    # Initialize objects used to communicate between processes
+    terminate_flag = multiprocessing.Value('b', False) # This is the global flag that is used to signal that the whole edice should collapse gracefully
+    camera_process_finished = multiprocessing.Value('b', False) # This signals to the main process that the camera acquisition process has terminated
+    
+    visualization_frame_queue = multiprocessing.Queue() # This queue is filled by the camera acquisition process and emptied by the (visualization) primary process
 
-import sys
+    do_record = config.get('RecordVideo', False)
+    if do_record:
+        vwriter_process_finished = multiprocessing.Value('b', False) # This signals to the main process that the video writing process has terminated
 
-def main():
-
-    if len(sys.argv) > 1:
-        camera = int(sys.argv[1])
+        storage_frame_queue = multiprocessing.Queue() # This queue is filled by the camera acquisition process and emptied by the video writing process
+        
+        frame_queues = [visualization_frame_queue, storage_frame_queue]
     else:
-        camera = 0
-        print("Using camera ", camera)
+        print('NOT RECORDING!!!')
+        frame_queues = [visualization_frame_queue]
 
-    visualization_frame_queue = multiprocessing.Queue()
-    storage_frame_queue = multiprocessing.Queue()
-
-    frame_queues = [visualization_frame_queue, storage_frame_queue]
-
-    terminate_flag = multiprocessing.Value('b', False)
-    camera_process_finished = multiprocessing.Value('b', False)
-    vwriter_process_finished = multiprocessing.Value('b', False)
-
-    video_grabber = VideoDisplay((480, 640, 3), visualization_frame_queue, terminate_flag)
-    #signal.signal(signal.SIGINT, video_grabber.handle_sigint)
-
-    camera_process = multiprocessing.Process(target=start_camera, args=(camera, (480, 640, 3), frame_queues, terminate_flag, camera_process_finished))
+    camera_process = multiprocessing.Process(target=start_camera, args=(config, frame_queues, terminate_flag, camera_process_finished))
     camera_process.daemon = True
-    camera_process.start()     # Launch the sound process
+    camera_process.start()     # Launch the camera frame acquisition process
 
-    vwriter_process = multiprocessing.Process(target=start_writer, args=(camera, storage_frame_queue, terminate_flag, vwriter_process_finished))
-    vwriter_process.daemon = True
-    vwriter_process.start()     # Launch the sound process
+    if do_record:
+        vwriter_process = multiprocessing.Process(target=start_writer, args=(config, storage_frame_queue, terminate_flag, vwriter_process_finished))
+        vwriter_process.daemon = True
+        vwriter_process.start()     # Launch the video writing process
+
+    # Create the main pyglet window
+    video_grabber = VideoDisplay(config, visualization_frame_queue, terminate_flag, no_escape)
 
     pyglet.clock.schedule_interval(video_grabber.update, 1/60.0)
 
@@ -252,20 +286,50 @@ def main():
     while not check_shm(camera_process_finished):
         pass
     print('Finished waiting for camera')
-    # Wait for end of video process
-    while not check_shm(vwriter_process_finished):
-        pass
-    print('Finished waiting for vwriter')
+
+    if do_record:
+        # Wait for end of video process
+        while not check_shm(vwriter_process_finished):
+            pass
+        print('Finished waiting for vwriter')
     
     for q in frame_queues:
+        time.sleep(0.1) # give a second for the queue background process (thread?) to finish loading data
         while not q.empty():
             print('draining queue')
             q.get()
-            time.sleep(0.1)
+            time.sleep(0.1) # give a second for the queue background process (thread?) to finish loading data
 
     print('waiting for join')            
     camera_process.join()
-    vwriter_process.join()
-    
+
+    if do_record:
+        vwriter_process.join()
+
+    #### That's all folks!!!
+
+def main():
+    if len(sys.argv) > 1:
+        camera = int(sys.argv[1])
+    else:
+        camera = 0
+        print("Using camera ", camera)
+
+    config = {
+        'RecordVideo': True,
+        'FilenameHeader': 'videodata',
+        'LogDirectory': os.getcwd(),
+        'CameraIndex': camera,
+        'ResX': 640, 'ResY': 480, 'FrameRate': 30,
+        'CameraParams': {
+            'Power Line frequency': 2, # 60 Hz
+            'Gain': 10
+        }
+
+    }
+
+    RunCameraInterface(config)
+
+
 if __name__ == '__main__':
     main()
