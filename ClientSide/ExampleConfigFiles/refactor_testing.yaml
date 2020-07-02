@@ -1,0 +1,168 @@
+Info: # "Info" configuration options can be overridden by command line options
+  MouseID: V1A1 # Used to name saved data file
+  Note: '' # Added in a block at the start of saved data file
+  Session: '' # This is added to default (date and time)
+  TaskType: Moana Classical Conditioning
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: True
+
+GPIO: # A list of GPIO pins used in the task
+  Camera: # This is an arbitrary label used later to configure Reward
+    Number: 1 # This is the pin number from the board
+    Type: 'Input' 
+    Power: False
+  Lick: # This is an arbitrary label used later to configure Reward
+    Number: 2 # This is the pin number from the board
+    Type: 'Input' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
+                           # (where the pull-down/pull-up resistors are enabled).
+    Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
+                # enabling the power channel of the audio jack.
+  ScreenLeft: # This is an arbitrary label used later to configure Reward
+    Number: 3 # This is the pin number from the board
+    Type: 'Input_Pulldown' 
+    Power: True
+
+  ScreenRight: # This is an arbitrary label used later to configure Reward
+    Number: 4 # This is the pin number from the board
+    Type: 'Input_Pulldown' 
+    Power: True
+  Reward:
+    Number: 5
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  Disable6:
+    Number: 6
+    Type: 'Input_Disable'
+  Disable7:
+    Number: 7
+    Type: 'Input_Disable'
+  Disable8:
+    Number: 8
+    Type: 'Input_Disable'
+  Disable9:
+    Number: 9
+    Type: 'Input_Disable'
+  Disable10:
+    Number: 10
+    Type: 'Input_Disable'
+  Disable11:
+    Number: 11
+    Type: 'Input_Disable'
+  Disable12:
+    Number: 12
+    Type: 'Input_Disable'
+
+Maze:
+  #Type: 'VR' # VR or physical
+  Type: 'StateMachine' # VR or physical
+  EncoderGain: 4096.0 # Encoder value per revolution
+  Length: 150.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
+  WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
+  TrackTransform: None # Not currently implemented.
+
+
+StateMachine:
+  VisualCommsPort: 5556
+
+  States:
+    BlankScreen:
+      Type: 'Visualization'
+      Params:
+        VisType: 'Fixed'
+        Command: 'GREY'
+      NextState: 'Intertrial'
+    Intertrial:
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 5000
+      NextState: 'StimulusPresentation'
+    StimulusPresentation:
+      FirstState: True
+      Type: 'Visualization'
+      Params:
+        VisType: 'Random'
+        Options:
+          Right:
+            Command: 'RIGHT'
+            Probability: 1
+          Left:
+            Command: 'LEFT'
+            Probability: 1
+      NextState: 'StimulusPresentationDelay'
+    StimulusPresentationDelay:
+      Type: 'Delay'
+      Params:
+        Duration: 'Exponential'
+        Rate: 1000
+        Min: 2000
+        Max: 4000
+      NextState: 'Reward'
+    Reward:
+        Type: 'Reward'   # Note, the next state better be longer than the "PumpRunTime" or wierd stuff could happen!
+        NextState: 'BlankScreen'
+        Params:
+          RewardSound: 'RewardSound' # The name of the auditory stimulus (of type "Beep") which should be played 
+          DispensePin: 'Reward' # (Required!) Label of GPIO for output pin which should trigger reward dispensing. 
+          PumpRunTime: 300 # How long to run the reward pump for. Note that the Beep duration is specified in its config
+
+AuditoryStimuli:
+  AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds'
+
+  Defaults:
+    Filename: '' # if no filename is specified, we'll raise an error later
+    Type: 'Localized'
+    CenterPosition: 0.0
+    BaselineGain: 0.0 # Max gain for linear stimuli
+    Modulation:
+      Type: Linear
+      #Rate: -20.0 # dB/cm
+      Width: 25 # cm in which sound is on (full width)
+      CutoffGain: -60.0 #dB at cutoff
+
+  StimuliList:
+    BackgroundSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      MinimixInputPort: 1 # jackminimix channel to use. By default, these will be auto-assigned if not specified
+      MinimixChannel: 'left' # stereo audio channel whose volume should be controlled for this stimulus
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      BaselineGain: -5.0
+      Filename: 'tone_cloud.wav'
+      Color: 'pink' # Matplotlib color name used for visualization system
+    Zone_1:
+      CenterPosition: 12.5 
+      Filename: 'tone_7kHz.wav'
+      Modulation:
+        Width: 10
+      Color: 'lime'
+    Zone_2:
+      CenterPosition: 102.5 
+      Filename: 'tone_11kHz.wav'
+      Modulation:
+        Width: 25
+      Color: 'orange'
+    RewardSound:
+      Type: 'Beep'
+      Filename: 'tone_3kHz.wav'
+      Duration: 250 # ms
+
+RewardZones:
+  RewardZoneList:
+    Reward1:
+      Type: 'Operant'
+      LickPin: 'Lick'
+      DispensePin: 'Reward'
+      PumpRunTime: 1000 # How long to run the reward pump for
+      LickTimeout: 3000.0 # Time between reward availability
+      MaxSequentialRewards: 50
+      RewardZoneStart: 145
+      RewardZoneEnd: 30
+      ResetZoneStart: 100
+      ResetZoneEnd: 130
+      Color: 'black'
+      RewardSound: 'RewardSound'
+

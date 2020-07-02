@@ -21,7 +21,6 @@ Info: # "Info" configuration options can be overridden by command line options
 
 Preferences:
   HeartBeat: 250 # The interval at which a heart-beat info message is printed to screen (in ms) 
-  AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds' # Directory in which file is stored
 
 
 
@@ -46,9 +45,13 @@ Maze:
   TrackTransform: None # Not currently implemented.
 
 AuditoryStimuli:
+  AudioFileDirectory: '/home/ckemere/Code/TreadmillTracker/ClientSide/Tasks/HeadFixedTask/Sounds' # Directory in which file is stored
+  MaximumNumberOfStimuli: 10 # Maximum number of auditory stimuli which follow in the StimuliList
+  OscPort: 12345 # TCP port to use for OSC communication with jackminimix
   Defaults: # Default values for stimulus parameters
     Filename: '' # Possible to specify a default sound file
     BaselineGain: 0.0 # Volume of stimulus. Corresponds to the peak volume for a 'Localized' stimulus 
+    OffGain: -90.0 # dB for stimulus off. -90 dB corresponds to 0 for jackminimix
     Type: 'Localized' # 'Localized' (landmark), 'Background', or 'Beep'
     Modulation: # Parameters which define how 'Localized' stimuli are spatially-modulated
       Type: Linear # Currently only 'Linear'
@@ -59,10 +62,12 @@ AuditoryStimuli:
                         #  by the Width, BaselineGain, and CutoffGain parameters.
                         #  Note that true "Off" corresponds in our system to -90 dB.
                         #  So depending on SNR and perceptual ability, a CutoffGain greater
-                        #  than that value might be noticeable.  
+                        #  than that value might be noticeable.
 
   StimuliList:
     BackgroundSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      MinimixInputPort: 1 # jackminimix channel to use. By default, these will be auto-assigned if not specified
+      MinimixChannel: 'left' # stereo audio channel whose volume should be controlled for this stimulus
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       BaselineGain: -5.0
       Filename: 'pink_noise.wav'
@@ -82,6 +87,7 @@ AuditoryStimuli:
     RewardSound:
       Type: 'Beep'
       Filename: 'tone_11kHz.wav'
+      Duration: 250 # ms
 
 RewardZones: # Configuration of Reward locations
   RewardZoneList:

@@ -1,0 +1,73 @@
+# This config file is intendend to do a simple test of sound playback.
+# If it is working, the sound should switch from the left ear to the right
+# each second, with pink noise on the right and a 3 kHz tone on the left.
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: True
+
+GPIO: # A list of GPIO pins used in the task
+  Reward1:
+    Number: 1
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    LeftSilence:
+      Type: 'SetSoundState'
+      Params:
+        RightEarSound: 'Off'
+        LeftEarSound: 'On'
+      NextState:
+        LeftSound:
+          ConditionType: 'ElapsedTime'
+          Duration: 1000
+          Priority: 1
+    LeftSound:
+      Type: 'SetSoundState'
+      Params:
+        RightEarSound: 'On'
+        LeftEarSound: 'Off'
+      NextState:
+        LeftSilence:
+          ConditionType: 'ElapsedTime'
+          Duration: 1000
+          Priority: 1
+
+
+AuditoryStimuli:
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
+  StimuliList:
+    RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'pink_noise.wav'
+      BaselineGain: 0.0
+      Device: 'Speaker1' # or single device, or list of devices
+    LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_3kHz.wav'
+      BaselineGain: 0.0
+      Device: 'Speaker2'
+  DeviceList:
+    Output1:
+      Type: 'Output' # Input or Output
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      ChannelLabels:
+        Speaker1: 0
+        Speaker2: 1
+    Microphone1:
+      Type: 'Input'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      NChannels: 2
+      SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
+      BufferSize: 1024 
+      Record: True
+      FilenameHeader: ''

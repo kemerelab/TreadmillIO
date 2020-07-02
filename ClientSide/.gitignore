@@ -1,3 +1,6 @@
 # Don't save log files
 Log*.txt
 
+# Python
+*.pyc
+*-checkpoint.ipynb

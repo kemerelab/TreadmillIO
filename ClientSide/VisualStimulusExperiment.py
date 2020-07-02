@@ -22,6 +22,8 @@ import csv
 import zmq
 import numpy as np
 
+from contextlib import ExitStack
+
 
 NamedVersion = '1.0'
 
@@ -86,113 +88,29 @@ elif 'RandomSeed' in Config['Preferences']:
     print(f"Setting random seed to {Config['Preferences']['RandomSeed']}.")
 
 #----------------------- Sound stimuli --------------
-if EnableSound:
-    print('Normalizing stimuli:')
-    StimuliList = Config['AuditoryStimuli']['StimuliList']
-    for stimulus_name, stimulus in StimuliList.items(): 
-        print(' - ',stimulus_name)
-        for key, config_item in Config['AuditoryStimuli']['Defaults'].items():
-            if key not in stimulus:
-                stimulus[key] = config_item
-            elif isinstance(config_item, dict):
-                for subkey, sub_config_item in config_item.items():
-                    if subkey not in stimulus[key]:
-                        stimulus[key][subkey] = sub_config_item
 
+from treadmillio.soundstimulus import SoundStimulusController
 
-if EnableSound:
-    from SoundStimulus import SoundStimulus
+with ExitStack() as stack:
+    SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], Config['Maze']['Length']))
 
-    BackgroundSounds = {}
-    Beeps = {}
+    # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
+    from treadmillio import SerialInterface
 
-    for stimulus_name, stimulus in StimuliList.items():
-        filename = stimulus['Filename']
-        if Config['Preferences']['AudioFileDirectory']:
-            filename = os.path.join(Config['Preferences']['AudioFileDirectory'], filename)
-        print('Loading: {}'.format(filename))
-
-        if stimulus['Type'] == 'Background':
-            BackgroundSounds[stimulus_name] = SoundStimulus(filename=filename)
-            BackgroundSounds[stimulus_name].change_gain(stimulus['BaselineGain'])
-        elif stimulus['Type'] == 'Beep':
-            Beeps[stimulus_name] = SoundStimulus(filename=filename)
-            Beeps[stimulus_name].change_gain(stimulus['BaselineGain'])
-            Beeps[stimulus_name].change_gain(-90.0) # beep for a very short moment
-        elif stimulus['Type'] == 'Localized':
-            raise(NotImplementedError("Localized auditory stimuli not supported for StateMachine control script."))
-
-        time.sleep(1.0)
-
-
-# --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
-from SerialInterface import SerialInterface
-
-Interface = SerialInterface(SerialPort=args.serial_port)
-
-if 'GPIO' in Config:
-    for gpio_label, gpio_config in Config['GPIO'].items():
-        Interface.add_gpio(gpio_label, gpio_config)
-
-
-# ------------------- Read in State Machine States. ------------------------------------------------------------------
-
-from TaskStateMachine import DelayState, RewardState, VisualizationState, SetGPIOState
-
-StateMachineDict = {}
-FirstState = None
-for state_name, state in Config['StateMachine'].items():
-    if 'FirstState' in state and state['FirstState']:
-        FirstState = state_name
-
-    if (state['Type'] == 'Delay'):
-        StateMachineDict[state_name] = DelayState(state_name, state['NextState'], state['Params'])
-
-    elif (state['Type'] == 'SetGPIO'):
-        if state['Params']['Pin'] not in Interface.GPIOs:
-            raise ValueError('GPIO pin not in defined GPIO list')
-        StateMachineDict[state_name] = SetGPIOState(state_name, state['NextState'], state['Params'])
-
-    elif (state['Type'] == 'Reward'):
-        if state['Params']['DispensePin'] not in Interface.GPIOs:
-            raise ValueError('Dispense pin not in defined GPIO list')
-        if EnableSound and state['Params']['RewardSound'] != 'None':
-            if state['Params']['RewardSound'] not in Beeps:
-                raise ValueError('Reward sound not in defined Beeps list')
-        StateMachineDict[state_name] = RewardState(state_name, state['NextState'], state['Params'])
-
-    elif (state['Type'] == 'Visualization'):
-        StateMachineDict[state_name] = VisualizationState(state_name, state['NextState'], state['Params'])
-
+    if 'GPIO' in Config:
+        Interface = SerialInterface(SerialPort=args.serial_port, config=Config['GPIO'])
     else:
-        raise(NotImplementedError("State machine elements other than " 
-                "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
+        Interface = SerialInterface(SerialPort=args.serial_port, config=None)
 
-if FirstState is None:
-    FirstState = list(StateMachineDict.keys())[0]
-    print('First state in state machine not defined. '
-          'Picking first state in list: {}'.format(FirstState))
-else:
-    print('First state is {}'.format(FirstState))
+    # ------------------- Read in State Machine States. ------------------------------------------------------------------
 
-# BUG: Should check to make sure states are all connected properly?
+    from treadmillio.taskstatemachine import TaskStateMachine
 
-# ----------------------- Initialize communications to VisualStimulusServer ---------------------------
-context = zmq.Context()
-socket = context.socket(zmq.PAIR)
-if 'VisualCommsPort' in Config['Preferences']:
-    port = str(Config['Preferences']['VisualCommsPort'])
-else:
-    port = "5556"
+    # BUG: Should check to make sure states are all connected properly?
+    StateMachine = stack.enter_context(TaskStateMachine(Config['StateMachine'], Interface, SoundController))
 
-
-
-# -------------------------- Start logging and stimulus connection -------------------------------------
-with open(log_filename, 'w', newline='') as log_file, \
-     context.socket(zmq.PAIR) as socket:
-
-    socket.connect("tcp://localhost:%s" % port)
-
+    # -------------------------- Start logging and stimulus connection -------------------------------------
+    log_file = stack.enter_context(open(log_filename, 'w', newline=''))
 
     ##### Write header to log file
     print(f'VisualStimulusExperiment Data File.\n   Version {NamedVersion}',file=log_file)
@@ -208,28 +126,19 @@ with open(log_filename, 'w', newline='') as log_file, \
     writer = csv.writer(log_file)
 
     # ----------------- Initialization
-    RewardPumpEndTime = 0
-    RewardPumpActive = False
-
-    StateMachineWaiting = False
-    StateMachineWaitEndTime = 0
-
-    CurrentState = StateMachineDict[FirstState]
 
     ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
     Interface.connect()
 
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
 
-    if (CurrentState.Type == 'Delay'):
-        StateMachineWaitEndTime = MasterTime + CurrentState.getDelay()
-        StateMachineWaiting = True
+    StateMachine.start(MasterTime)
 
     while(True):
         ## every 2 ms happens:
         FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
         last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
-                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
+                                    # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
         writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
@@ -238,58 +147,12 @@ with open(log_filename, 'w', newline='') as log_file, \
 
         # -------------------- StateMachine -------------------- 
 
-        if StateMachineWaiting: # Currently in a `Delay` or other state in which we shouldn't transition yet
-            if MasterTime > StateMachineWaitEndTime:
-                CurrentState = StateMachineDict[CurrentState.NextState]
-                StateMachineWaiting = False
-            else:
-                pass
-        else:
-            if CurrentState.Type == 'Delay':
-                delay = CurrentState.getDelay()
-                StateMachineWaitEndTime = MasterTime + delay
-                StateMachineWaiting = True
-                if DoLogCommands:
-                    writer.writerow([MasterTime,-1,-1,-1,-1,'Delay', delay])
+        StateMachine.update_statemachine(MasterTime, Interface, SoundController, writer.writerow)
 
-            elif CurrentState.Type == 'SetGPIO':
-                Pin, Value = CurrentState.getPinValue()
-                if Value:
-                    Interface.raise_output(Pin)
-                else:
-                    Interface.lower_output(Pin)
-                if DoLogCommands:
-                    writer.writerow([MasterTime,-1,-1,-1,-1,'SetGPIO', Pin, Value])
-                CurrentState = StateMachineDict[CurrentState.NextState]
+        Interface.update_pulses(MasterTime)
 
-            elif CurrentState.Type == 'Reward':
-                RewardPin, PulseLength, RewardSound = CurrentState.rewardValues()
-                RewardPumpActive = True
-                RewardPumpEndTime = MasterTime + PulseLength
-                Interface.raise_output(RewardPin)
-                if EnableSound and RewardSound:
-                    Beeps[RewardSound].change_gain(stimulus['BaselineGain'])
-                #print('Reward!')
-                if DoLogCommands:
-                    writer.writerow([MasterTime,-1,-1,-1,-1,'Reward', RewardPin, PulseLength])
-                CurrentState = StateMachineDict[CurrentState.NextState]
-                
-            elif (CurrentState.Type == 'Visualization'):
-                command = CurrentState.getVisualizationCommand()
-                #print(command)
-                if DoLogCommands:
-                    writer.writerow([MasterTime,-1,-1,-1,-1,'Visualization', command])                
-                socket.send_string(command)
-                CurrentState = StateMachineDict[CurrentState.NextState]
-
-        # Reward
-        if RewardPumpActive:
-            if MasterTime > RewardPumpEndTime:
-                RewardPumpActive = False
-                Interface.lower_output(RewardPin)
-                if EnableSound and RewardSound:
-                    Beeps[RewardSound].change_gain(-90.0)
-
+        if EnableSound:
+            SoundController.update_beeps(MasterTime)
 
 
 
