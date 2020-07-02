@@ -460,9 +460,9 @@ class SetSoundStimulusState(TaskState):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
         for sound, params in self.Sound.items(): 
             if params['Value'] == 'On':
-                label += '<tr><td>Play {}</td></tr>'.format(params['Sound'].filename)
+                label += '<tr><td>Play {}</td></tr>'.format(params['Sound'].name)
             if params['Value'] == 'Off':
-                label += '<tr><td>Stop {}</td></tr>'.format(params['Sound'].filename)
+                label += '<tr><td>Stop {}</td></tr>'.format(params['Sound'].name)
         label +='</table>'
         return label
 
