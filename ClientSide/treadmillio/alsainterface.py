@@ -15,6 +15,7 @@ import time
 import pickle
 import soundfile
 import warnings
+import signal
 
 #from profilehooks import profile
 
@@ -195,6 +196,8 @@ class ALSAPlaybackSystem():
         self.adevice.setrate(self.fs)
         if dtype == 'int16':
             self.adevice.setformat(alsaaudio.PCM_FORMAT_S16_LE)
+        # elif dtype == 'int32':
+        #     self.adevice.setformat(alsaaudio.PCM_FORMAT_S32_LE)
         else:
             raise(ValueError("dtypes other than 'int16' not currently supported."))
         self.adevice.setperiodsize(buffer_size)
@@ -244,8 +247,6 @@ class ALSAPlaybackSystem():
 
 class ALSARecordSystem():
     def __init__(self, dev_name, config, log_directory=None):
-        self.running = False
-
         if not log_directory:
             warnings.warn("Recording microphone input to cwd because log file wasn't specified.")
             log_directory = os.getcwd()
@@ -265,14 +266,20 @@ class ALSARecordSystem():
 
         self.adevice.setchannels(self.channels) # We'll always record stereo audio TODO: support many channels
         self.adevice.setrate(self.fs)
+        scale_factor = 4 # system fixed number of buffers
         if dtype == 'int16':
             self.adevice.setformat(alsaaudio.PCM_FORMAT_S16_LE)
+            scale_factor = scale_factor*2
+        # elif dtype == 'int32':
+        #     scale_factor = scale_factor*4
+        #     self.adevice.setformat(alsaaudio.PCM_FORMAT_S32_LE)
         else:
             raise(ValueError("dtypes other than 'int16' not currently supported."))
 
         self.adevice.setperiodsize(self.buffer_size)
 
-        self.in_buf = np.zeros((self.buffer_size*4, self.channels), dtype='int16', order='C')
+
+        self.in_buf = np.zeros((self.buffer_size*scale_factor, self.channels), dtype=dtype, order='C')
 
         self.adevice.enable_timestamps()
 
@@ -284,32 +291,31 @@ class ALSARecordSystem():
         self.adevice.dumpinfo()
         print('\n\n')
 
+        self.soundfile = None
+        self.logfile = None
+        self.xrun_logfile = None
+
         ######
 
     def __del__(self):
         self.adevice.close()
 
+
     def record(self):
         print(time.time())
-        with open(self.xrun_filename, 'w') as xrun_logfile, \
-                open(self.logfilename, 'w') as logfile, \
-                soundfile.SoundFile(self.soundfilename, 'w', self.fs, self.channels, 'PCM_16') as sf:
+        with open(self.xrun_filename, 'w') as self.xrun_logfile, \
+                open(self.logfilename, 'w') as self.logfile, \
+                soundfile.SoundFile(self.soundfilename, 'w', self.fs, self.channels, 'PCM_16') as self.soundfile:
 
-            print('Timestamps for soundfile frames. Each record is [nsamps, time], where time is CLOCK_MONOTONIC.\n', file=logfile)
-            self.running = True
-            while self.running:
+            print('Timestamps for soundfile frames. Each record is [nsamps, time], where time is CLOCK_MONOTONIC.\n', file=self.logfile)
+            while True:
                 nsamp = self.adevice.read_into(self.in_buf)
                 t = self.adevice.gettimestamp()
-                sf.write(self.in_buf[:nsamp,:])
-                print('{}, {}'.format(nsamp, t), file=logfile)
+                self.soundfile.write(self.in_buf[:nsamp,:])
+                print('{}, {}'.format(nsamp, t), file=self.logfile)
                 if nsamp < self.buffer_size:
                     print('ALSA Read buffer underrun.')
-                    print('buffer underrun {}'.format(t), file=xrun_logfile)
-
-
-            if self.running == False:
-                print('SIGINT flag changed.')
-
+                    print('buffer underrun {}'.format(t), file=self.xrun_logfile)
 
 
 def normalize_output_device(config):

@@ -5,6 +5,7 @@ import os
 import warnings
 import socket
 import signal
+from functools import partial
 import pickle
 from .viewer import launch_viewer
 
@@ -12,15 +13,13 @@ from multiprocessing import Process, Pipe, Value
 import pickle
 
 from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
-
 from .alsainterface import normalize_output_device, normalize_input_device, look_for_and_add_stimulus_defaults
 
 import cProfile
 
-
-
 def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
+
 
 def run_audio_playback_process(device_name, config, file_dir, control_pipe, log_directory):
     playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)
@@ -29,8 +28,8 @@ def run_audio_playback_process(device_name, config, file_dir, control_pipe, log_
         print('Playback starting')
         playback_system.play()
     except KeyboardInterrupt:
-        print('Caught SIGINT in ALSA process')
-        playback_system.running = False
+        print('Caught KeyboardInterrupt in ALSA playback process')
+        playback_system.running = False # I don't think this does anything
 
 def run_audio_record_process(device_name, config, log_directory):
     record_system = ALSARecordSystem(device_name, config, log_directory)
@@ -38,8 +37,7 @@ def run_audio_record_process(device_name, config, log_directory):
         print('Record starting')
         record_system.record()
     except KeyboardInterrupt:
-        print('Caught SIGINT in ALSA process')
-        record_system.running = False
+        print('Caught KeyboardInterrupt in ALSA record process')
 
 
 class SoundStimulusController():
@@ -63,9 +61,9 @@ class SoundStimulusController():
                     self._audio_playback_process.daemon = True
                     self._audio_playback_process.start()     # Launch the sound process
                 elif dev['Type'] == 'Input':
-                    self._record_playback_process = Process(target=run_audio_record_process, args=(dev_name, dev, log_directory))
-                    self._record_playback_process.daemon = True
-                    self._record_playback_process.start()     # Launch the sound process
+                    self._audio_record_process = Process(target=run_audio_record_process, args=(dev_name, dev, log_directory))
+                    self._audio_record_process.daemon = True
+                    self._audio_record_process.start()     # Launch the sound process
 
 
         # Get stimuli parameters
@@ -172,6 +170,8 @@ class SoundStimulusController():
         if self._audio_playback_process:
             self._audio_playback_process.join()
         if self._audio_record_process:
+            while self._audio_record_process.is_alive(): # trust that it's trying to end
+                pass
             self._audio_record_process.join()
 
 class SoundStimulus():
@@ -327,8 +327,6 @@ class BeepSound(SoundStimulus):
         return True, None
 
 
-
-
 def validate_sound_config(config):
     # What do we want to test:
     #   After we optionally specified defaults, SoundStimuli have all the proper settings
@@ -360,7 +358,4 @@ def validate_sound_config(config):
 
         if not stim['Device'] in OutputDevices:
             raise(ValueError("Sound stimulus {} names a device ({}) that is not specified as the channel of a device.".format(stim_name, stim['Device'])))
-
-
-    
 
