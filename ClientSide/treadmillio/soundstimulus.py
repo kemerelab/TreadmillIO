@@ -7,7 +7,6 @@ import socket
 import signal
 from functools import partial
 import pickle
-#from .viewer import launch_viewer
 
 from multiprocessing import Process, Pipe, Value
 import pickle
@@ -80,6 +79,14 @@ class SoundStimulusController():
             if verbose > 1:
                 print('Adding stimulus {}...'.format(stimulus_name))
             self.add_stimulus(stimulus_name, stimulus, track_length, verbose)
+
+        # Add viewer
+        if sound_config.get('Viewer', False):
+            from .viewer import launch_viewer
+            viewer_dict = {name: s.gain for name, s in self._Stimuli.items()}
+            viewer_conn, p_viewer = launch_viewer('SoundStimulus', stimuli=viewer_dict)
+            for _, sound in self._Stimuli.items():
+                sound.connect_viewer(viewer_conn)
 
     def add_stimulus(self, stimulus_name, stimulus, track_length=None, verbose=0):
         # Add to type-specific mapping
