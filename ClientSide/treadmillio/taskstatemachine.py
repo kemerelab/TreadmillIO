@@ -5,7 +5,6 @@ import warnings
 import zmq
 import random
 import pickle
-from .viewer import launch_viewer
 
 class StateTransitionCondition:
     def __init__(self, label, state_config, io_interface):
@@ -151,6 +150,7 @@ class TaskState:
 
     def on_entrance(self, logger=None):
         if self.render_viewer and self._p_viewer is None:
+            from .viewer import launch_viewer
             self._viewer_conn, self._p_viewer = launch_viewer(self.Type)
 
         if isinstance(self.next_state, dict):
@@ -928,6 +928,7 @@ class TaskStateMachine():
 
         self.render_viewer = config.get('Viewer', False)
         if self.render_viewer:
+            from .viewer import launch_viewer
             self._viewer_conn, self._p_viewer = launch_viewer('StateMachine', self.render())
 
     def __enter__(self):

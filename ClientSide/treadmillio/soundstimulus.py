@@ -7,7 +7,7 @@ import socket
 import signal
 from functools import partial
 import pickle
-from .viewer import launch_viewer
+#from .viewer import launch_viewer
 
 from multiprocessing import Process, Pipe, Value
 import pickle
