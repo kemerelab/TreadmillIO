@@ -2,8 +2,6 @@
 
 # Simple test script that plays (some) wav files
 
-from __future__ import print_function
-
 import sys
 import scipy.io.wavfile
 import alsaaudio
