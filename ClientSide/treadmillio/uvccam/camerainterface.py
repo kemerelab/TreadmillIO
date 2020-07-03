@@ -16,7 +16,7 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
     setproctitle.setproctitle(multiprocessing.current_process().name)
 
     import logging
-    import treadmillio.webcam.uvc as uvc
+    import treadmillio.uvccam.uvc as uvc
 
     class CameraInterface():
         def __init__(self, config, frame_queues, terminate_flag):

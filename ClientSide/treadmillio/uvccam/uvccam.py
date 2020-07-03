@@ -81,9 +81,9 @@ def termination_handler(signal, frame):
 
     sys.exit()
 
-from treadmillio.webcam.videowriter import start_writer
-from treadmillio.webcam.camerainterface import start_camera
-from treadmillio.webcam.camerawindow import start_window
+from treadmillio.uvccam.videowriter import start_writer
+from treadmillio.uvccam.camerainterface import start_camera
+from treadmillio.uvccam.camerawindow import start_window
 
 def RunCameraInterface(config, no_escape=True):
     global num_cameras
