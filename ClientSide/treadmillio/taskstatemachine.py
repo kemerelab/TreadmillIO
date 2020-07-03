@@ -598,13 +598,17 @@ class PatchState(TaskState):
             if self.render_viewer:
                 update_dict = {'reset': None, 'priority': 1}
                 self._viewer_conn.send_bytes(pickle.dumps(update_dict))
+        elif self.render_viewer:
+            update_dict = {'reward': [self.Model.t, self.Model.available_reward - self.R_harvest],
+                           'priority': 1} # don't skip first data point
+            self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
     def on_remain(self, logger=None):
         # Update patch statistics, i.e. if reward is available
         self.Model.update(self.io_interface.MasterTime)
         if self.render_viewer:
             update_dict = {'reward': [self.Model.t, self.Model.available_reward - self.R_harvest],
-                           'priority': 0}
+                           'priority': 0} # can skip intermediate data points
             self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
     def get_graph_label(self):
@@ -975,7 +979,7 @@ class TaskStateMachine():
             self.new_state = False
 
 
-    def render(self, filename):
+    def render(self, filename=None):
         import pygraphviz
 
         G = pygraphviz.AGraph(directed=True, rankdir='LR', type='UTF-8')
