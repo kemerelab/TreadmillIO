@@ -19,12 +19,47 @@ Install the dependency of `pyalsaaudio`
 In the `pyalsaaudio` installation directory run: `pip3 install -e .`
 The installation should conlcude without error.
 
+#### For webcam interface, we are using code from pupil-labs. It requires a non-standard version of libuvc
+This needs `cmake` and `libusb-1.0-0-dev` as dependencies, as well as the turboJPEG headers
+
+`sudo apt install libusb-1.0-0-dev cmake libjpeg-turbo8-dev libturbojpeg0-dev` 
+
+`git clone https://github.com/pupil-labs/libuvc`
+
+As per the instructions on their github page:
+```
+git clone https://github.com/pupil-labs/libuvc
+cd libuvc
+mkdir build
+cd build
+cmake .. 
+make && sudo make install
+```
+
+I found some wierdness where for some reason I didn't get all the dependencies
+compiled in the first time. I haven't been able to replicate this though.
+
+We compress the video, which requires `ffmpeg`:
+
+`sudo apt install ffmpeg`
+
+
+
 #### Clone the `TreadmillIO` repository
 
 `git clone https://github.com/kemerelab/TreadmillIO`
 
 Install further dependencies:
-`pip3 install zmq pyserial soundfile gitpython`
+`pip3 install zmq pyserial soundfile gitpython` (for main code)
+
+`pip3 install cython setproctitle scikit-video pyglet` (for uvc camera interface)
+
+If you will use the camera interface, 
+```
+cd TreadmillIO/ClientSide/treadmillio/uvccam
+python3 setup.py build_ext --inplace
+```
+(This last command compiles the cython-based camera interface code.)
 
 #### Install the required files for the Teensy interface:
 Optionally download the Arduino package and the Teensy installation files from
@@ -33,7 +68,25 @@ Optionally download the Arduino package and the Teensy installation files from
 Install the udev rules copied from this website in
 [Documentation/49-teensy.rules] to `/etc/udev/rules.d`.
 
+If you will use the camera interface, you'll need to make a rules file for your
+camera. Look for it in `lsusb` and find out the vendor and product IDs. It will
+look something like this:
+
+`Bus 003 Device 002: ID 05a3:9422 ARC International Camera`
+
+05a3 is the vendor id and 9422 is the product id. Then add a line in the example
+rules file [Documentation/10-libuvc.rules] and copy it to `/etc/udev/rules.d`.
+
+After you update the UDEV rules, you'll need to restart it by either restarting
+your computer or running:
+
+`udevadm control --reload-rules && udevadm trigger`
+
+You'll probably need to unplug and replug the devices after that for them to
+be picked up.
+
 #### Test
 You should now be able to plug in the IO board and run `./RunExperiment.py` with
-an appropriate configuration file.
+an appropriate configuration file.  For example: 
+`./RunExperiment.py -C ExampleConfigs/latency_test.yaml`.
 
