@@ -80,10 +80,14 @@ def termination_handler(signal, frame):
     print('All camera processes joined.')
 
     sys.exit()
-
-from treadmillio.uvccam.videowriter import start_writer
-from treadmillio.uvccam.camerainterface import start_camera
-from treadmillio.uvccam.camerawindow import start_window
+try:
+    from treadmillio.uvccam.videowriter import start_writer
+    from treadmillio.uvccam.camerainterface import start_camera
+    from treadmillio.uvccam.camerawindow import start_window
+except:
+    from videowriter import start_writer
+    from camerainterface import start_camera
+    from camerawindow import start_window
 
 def RunCameraInterface(config, no_escape=True):
     global num_cameras
@@ -149,7 +153,7 @@ def main():
         print("Using camera ", camera)
 
     config = {
-        'RecordVideo': True,
+        'RecordVideo': False,
         'FilenameHeader': 'videodata',
         'LogDirectory': os.getcwd(),
         'CameraIndex': camera,
@@ -162,6 +166,8 @@ def main():
     }
 
     RunCameraInterface(config)
+    while True:
+        pass
 
 
 if __name__ == '__main__':

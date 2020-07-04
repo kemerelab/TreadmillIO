@@ -16,7 +16,10 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
     setproctitle.setproctitle(multiprocessing.current_process().name)
 
     import logging
-    import treadmillio.uvccam.uvc as uvc
+    try:
+        import treadmillio.uvccam.uvc as uvc
+    except:
+        import uvc as uvc
 
     class CameraInterface():
         def __init__(self, config, frame_queues, terminate_flag):
