@@ -46,6 +46,7 @@ class Viewer:
         self.running = True
         self.conn = conn
         #self.q = q
+        t_update = time.time()
         while self.running:
             # Collect data in intervals
             data = None
@@ -70,6 +71,14 @@ class Viewer:
 
                 # Refresh figure
                 self.refresh()
+
+                # Log timestamp
+                t_update = time.time()
+
+            elif time.time() - t_update > 5.0:
+                # Occasionally run event loop to keep window active
+                self.fig.canvas.start_event_loop(0.001)
+                t_update = time.time()
 
     def refresh(self):
         # This can be tricky. See e.g. https://stackoverflow.com/a/45734500/8066298
@@ -132,7 +141,6 @@ class SoundStimulusViewer(Viewer):
         for cmd, val in data.items():
             if cmd in self.stimuli:
                 # Update gain
-                print(cmd, val)
                 self.stimuli[cmd] = val
 
                 # Plot rolled buffers (this works even when partially empty)
@@ -251,7 +259,6 @@ class PatchViewer(StateViewer):
                 self.reset()
 
     def reset(self):
-        print('resetting')
         self.t = np.empty([self.N])
         self.t.fill(np.nan)
         self.r = np.empty([self.N])
