@@ -728,10 +728,13 @@ cdef class Capture:
         print('Trying to close in UVC.pyx')
         if self._stream_on:
             self._stop()
+        print('Stream stopped in UVC.pyx')
         if self.devh != NULL:
             self._de_init_device()
+        print('Device de-inited in UVC.pyx')
         if self.ctx != NULL:
             uvc.uvc_exit(self.ctx)
+            print('UVC exited in UVC.pyx')
             self.ctx = NULL
             turbojpeg.tjDestroy(self.tj_context)
             self.tj_context = NULL
