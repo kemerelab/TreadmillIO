@@ -80,6 +80,8 @@ def termination_handler(signal, frame):
     print('All camera processes joined.')
 
     sys.exit()
+
+
 try:
     from treadmillio.uvccam.videowriter import start_writer
     from treadmillio.uvccam.camerainterface import start_camera
@@ -89,12 +91,20 @@ except:
     from camerainterface import start_camera
     from camerawindow import start_window
 
+
+from multiprocessing.queues import Queue
+class LabeledQueue(Queue):
+    def __init__(self, frame_type='img', *args,**kwargs):
+        ctx = multiprocessing.get_context()
+        super(LabeledQueue, self).__init__(*args, **kwargs, ctx=ctx)
+        self.frame_type = frame_type
+
 def RunCameraInterface(config, no_escape=True):
     global num_cameras
     num_cameras = num_cameras + 1
     # Initialize objects used to communicate between processes
-    storage_frame_queue = multiprocessing.Queue() # This queue is filled by the camera acquisition process and emptied by the video writing process
-    visualization_frame_queue = multiprocessing.Queue() # This queue is filled by the camera acquisition process and emptied by the (visualization) primary process
+    storage_frame_queue = LabeledQueue(frame_type='jpeg') # This queue is filled by the camera acquisition process and emptied by the video writing process
+    visualization_frame_queue = LabeledQueue(frame_type='img') # This queue is filled by the camera acquisition process and emptied by the (visualization) primary process
 
     do_record = config.get('RecordVideo', False)
     if do_record:
@@ -153,8 +163,9 @@ def main():
         print("Using camera ", camera)
 
     config = {
-        'RecordVideo': False,
+        'RecordVideo': True,
         'FilenameHeader': 'videodata',
+        'Compress': False,
         'LogDirectory': os.getcwd(),
         'CameraIndex': camera,
         'ResX': 640, 'ResY': 480, 'FrameRate': 30,

@@ -24,11 +24,21 @@ class VideoWriter():
         if not os.path.isdir(log_directory):
             raise(ValueError('VideoWriter LogDirectory [{}] not found.'.format(log_directory)))
 
-        video_filename = os.path.join(log_directory, '{}.mp4'.format(filename_header))
-        self._writer = skvideo.io.FFmpegWriter(video_filename, outputdict={
-            #'-vcodec': 'libx264', '-b': '300000000'
-            '-vcodec': 'libx264', '-crf': '27', '-preset': 'veryfast'
-        })
+        self._compressed = None
+        if config['Compress']:
+            assert frame_queue.frame_type == 'img'
+            self._compressed = True
+            video_filename = os.path.join(log_directory, '{}.mp4'.format(filename_header))
+            self._writer = skvideo.io.FFmpegWriter(video_filename, outputdict={
+                #'-vcodec': 'libx264', '-b': '300000000'
+                '-vcodec': 'libx264', '-crf': '27', '-preset': 'veryfast'
+            })
+        else:
+            assert frame_queue.frame_type == 'jpeg'
+            self._compressed = False
+            video_filename = os.path.join(log_directory, '{}.mjpeg'.format(filename_header))
+            self._writer = open(video_filename, 'wb')
+
 
         timestamps_filename = os.path.join(log_directory, '{}_timestamps.csv'.format(filename_header))
         self._ts_file = open(timestamps_filename, 'w')
@@ -41,7 +51,10 @@ class VideoWriter():
                 try:
                     t0 = time.time()
                     (img, timestamp) = self._frame_queue.get(0)
-                    self._writer.writeFrame(img)
+                    if self._compressed:
+                        self._writer.writeFrame(img)
+                    else:
+                        self._writer.write(img)
                     self._ts_writer.writerow([timestamp, time.clock_gettime_ns(time.CLOCK_MONOTONIC)])
                     t_write = time.time() - t0
                 except queue.Empty:

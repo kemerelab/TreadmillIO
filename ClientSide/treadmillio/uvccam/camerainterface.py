@@ -1,5 +1,6 @@
 import setproctitle, signal
 import multiprocessing
+import cProfile
 
 def check_shm(shm_var):
     with shm_var.get_lock():
@@ -70,7 +71,12 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
                 if frame:
                     for q in self._queues:
                         if not check_shm(self._terminate_flag):
-                            q.put((frame.img, frame.timestamp))
+                            if q.frame_type == 'img':
+                                q.put((frame.img, frame.timestamp))
+                            elif q.frame_type == 'jpeg':
+                                q.put((frame.jpeg_raw, frame.timestamp))
+                            else:
+                                raise(ValueError("Camera interface frame type not understood ({}).".format(q.frame_type)))
 
         def close(self):
             if self._cap:
@@ -80,6 +86,7 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
     try:
         camera = CameraInterface(config, frame_queues, terminate_flag)
         done_flag.value = False # not using a lock!
+        # cProfile.runctx('camera.run()()', globals(), locals(), "results.prof") # useful for debugging
         camera.run()
         print('Ended run')
         camera.close()

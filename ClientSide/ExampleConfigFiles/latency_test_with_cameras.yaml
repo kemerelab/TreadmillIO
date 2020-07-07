@@ -55,7 +55,7 @@ AuditoryStimuli:
       Type: 'Output' # Input or Output
       HWDevice: 'hw:CARD=SoundCard,DEV=0'
       BufferSize: 128
-      NPeriods: 2
+      #NPeriods: 2 # Not currently implemented
       NChannels: 2
       ChannelLabels:
         Speaker1: 1
@@ -63,7 +63,7 @@ AuditoryStimuli:
       Type: 'Input'
       HWDevice: 'hw:CARD=SoundCard,DEV=0'
       NChannels: 2
-      SamplingRate: 96000 # I'd like to autodetect from playback, but this would require communication between processes
+      SamplingRate: 192000 # I'd like to autodetect from playback, but this would require communication between processes
       BufferSize: 1024 
       Record: True
       FilenameHeader: ''
@@ -134,22 +134,15 @@ StateMachine:
 Cameras:
   Camera1:
     RecordVideo: True
-    FilenameHeader: 'SnoutCam'
-    CameraIndex: 1
-    ResX: 640 
-    ResY: 480
-    FrameRate: 30
-    CameraParams:
-      Power Line frequency: 2, # 60 Hz
-      Gain: 10
-
-  Camera2:
-    RecordVideo: True
-    FilenameHeader: 'FaceCam'
+    FilenameHeader: 'MouseCam'
+    Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
     CameraIndex: 0
-    ResX: 640 
-    ResY: 480
+    ResX: 1280 
+    ResY: 720
     FrameRate: 30
     CameraParams:
       Power Line frequency: 2, # 60 Hz
       Gain: 10
+      # White Balance temperature,Auto: 0
+      # White Balance temperature: 2400
+

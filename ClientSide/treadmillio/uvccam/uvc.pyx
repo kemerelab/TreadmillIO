@@ -247,6 +247,14 @@ cdef class Frame:
             return BGR
 
 
+    property jpeg_raw:
+        def __get__(self):
+            cdef char* jpeg_data_ptr = <char *> self._uvc_frame.data
+            cdef bytes jpeg_data = jpeg_data_ptr[:self._uvc_frame.data_bytes]
+            return jpeg_data
+
+
+
     #for legacy reasons.
     property img:
         def __get__(self):
