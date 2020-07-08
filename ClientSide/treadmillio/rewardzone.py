@@ -51,7 +51,7 @@ class ClassicalRewardZone():
                 self.reward_sound = params['RewardSound']
                 self.sound_controller = sound_controller
 
-        self.type = 'Classical'
+        self.Type = 'Classical'
 
         self.active_zone = (params['RewardZoneStart'], params['RewardZoneEnd'])
         if (('ResetZoneStart' in params) and not ('ResetZoneEnd' in params)) or \
@@ -61,9 +61,8 @@ class ClassicalRewardZone():
         if ('ResetZoneStart' in params) and ('ResetZoneEnd' in params):
             self.reset_zone = (params['ResetZoneStart'], params['ResetZoneEnd'])
         
-        self.refractory_period = params['LickTimeout']
-        self.max_rewards = params['MaxSequentialRewards']
-
+        self.refractory_period = params.get('LickTimeout', 0) # by default, classical conditioning has no refractory period
+        self.max_rewards = params.get('MaxSequentialRewards', 1) # by default, we should only have one reward
             
         self.pulse_length = params['PumpRunTime']
 

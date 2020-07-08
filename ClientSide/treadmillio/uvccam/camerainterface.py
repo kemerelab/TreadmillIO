@@ -92,7 +92,8 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
         camera.close()
         done_flag.value = True #
         print('Done in camera exit.')
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
+        terminate_flag.value = True
         camera.close()
         done_flag.value = True #
         print('Camera exited b/c of SIGINT')

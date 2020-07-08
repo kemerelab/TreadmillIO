@@ -11,6 +11,8 @@ import pickle
 from multiprocessing import Process, Pipe, Value
 import pickle
 
+import traceback as tb
+
 from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
 from .alsainterface import normalize_output_device, normalize_input_device, look_for_and_add_stimulus_defaults
 
@@ -20,50 +22,87 @@ def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
 
 
-def run_audio_playback_process(device_name, config, file_dir, control_pipe, log_directory):
-    playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)
+def run_playback_process(device_name, config, file_dir, control_pipe, log_directory, status):
+    status.value = 1
+    try: 
+        playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)
+    except Exception as e:
+        status.value = -1
+        raise e
+
     try:
         # cProfile.runctx('playback_system.play()', globals(), locals(), "results.prof") # useful for debugging
         print('Playback starting')
+        status.value = 2
         playback_system.play()
     except KeyboardInterrupt:
         print('Caught KeyboardInterrupt in ALSA playback process')
         playback_system.running = False # I don't think this does anything
+    except Exception as e:
+        status.value = -1
+        raise e
 
-def run_audio_record_process(device_name, config, log_directory):
-    record_system = ALSARecordSystem(device_name, config, log_directory)
+def run_record_process(device_name, config, log_directory, status):
+    status.value = 1
     try:
+        record_system = ALSARecordSystem(device_name, config, log_directory)
+    except Exception as e:
+        status.value = -1
+        raise e
+
+    try:
+        status.value = 2
         print('Record starting')
         record_system.record()
     except KeyboardInterrupt:
         print('Caught KeyboardInterrupt in ALSA record process')
+    except Exception as e:
+        status.value = -1
+        raise e
 
 
 class SoundStimulusController():
     def __init__(self, sound_config, track_length=None, log_directory=None, verbose=0):
 
+        self.valid = False
         # TODO: Handle pipes for multiple audio devices
         # TODO: Error check the YAML file before this to make sure
         #       that sound stimuli specify devices that are in the device list
         #       otherwise, the process will be exit without the main program
         #       realizing it.
 
-        self._audio_playback_process = None
-        self._audio_record_process = None
+        self._playback_process = None
+        self._playback_status = Value('i')
+        self._playback_status.value = 0
+        self._record_process = None
+        self._record_status = Value('i')
+        self._record_status.value = 0
+ 
 
+        # Start the ALSA playback and record processes.
+        #  - ALSA playback will also load all the sound files!
         if 'DeviceList' in sound_config:
             for dev_name, dev in sound_config['DeviceList'].items():
                 if dev['Type'] == 'Output':
                     _playback_read_pipe, self.alsa_playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
-                    self._audio_playback_process = Process(target=run_audio_playback_process, args=(dev_name, sound_config, 
-                                                sound_config['AudioFileDirectory'], _playback_read_pipe, log_directory))
-                    self._audio_playback_process.daemon = True
-                    self._audio_playback_process.start()     # Launch the sound process
-                elif dev['Type'] == 'Input':
-                    self._audio_record_process = Process(target=run_audio_record_process, args=(dev_name, dev, log_directory))
-                    self._audio_record_process.daemon = True
-                    self._audio_record_process.start()     # Launch the sound process
+                    self._playback_process = Process(target=run_playback_process, args=(dev_name, sound_config, 
+                                                sound_config['AudioFileDirectory'], _playback_read_pipe, log_directory, self._playback_status))
+                    self._playback_process.daemon = True
+                    self._playback_process.start()     # Launch the sound process
 
+                    while(self._playback_status.value < 2):
+                        if (self._playback_status.value < 0): # error in launching the playback process!
+                            raise(RuntimeError("An error occured in starting the ALSA playback process/object."))
+                        
+
+                elif dev['Type'] == 'Input':
+                    self._record_process = Process(target=run_record_process, args=(dev_name, dev, log_directory, self._record_status))
+                    self._record_process.daemon = True
+                    self._record_process.start()     # Launch the sound process
+
+                    while(self._record_status.value < 2):
+                        if (self._record_status.value < 0): # error in launching the record process!
+                            raise(RuntimeError("An error occured in starting the ALSA record process/object."))
 
         # Get stimuli parameters
         StimuliList = look_for_and_add_stimulus_defaults(sound_config)
@@ -87,6 +126,8 @@ class SoundStimulusController():
             viewer_conn, p_viewer = launch_viewer('SoundStimulus', stimuli=viewer_dict)
             for _, sound in self._Stimuli.items():
                 sound.connect_viewer(viewer_conn)
+
+        self.valid = True # we won't be valid unless we made it here.
 
     def add_stimulus(self, stimulus_name, stimulus, track_length=None, verbose=0):
         # Add to type-specific mapping
@@ -171,15 +212,17 @@ class SoundStimulusController():
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
+        tb.print_tb(exc_traceback)
+
         print('SoundStimulController waiting for ALSA processes to join. TODO: Handle other than KeyboardInterrupt!')
         # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
         #self.alsa_playback_pipe.send_bytes(pickle.dumps({'StopMessage': True}))
-        if self._audio_playback_process:
-            self._audio_playback_process.join()
-        if self._audio_record_process:
-            while self._audio_record_process.is_alive(): # trust that it's trying to end
+        if self._playback_process:
+            self._playback_process.join()
+        if self._record_process:
+            while self._record_process.is_alive(): # trust that it's trying to end
                 pass
-            self._audio_record_process.join()
+            self._record_process.join()
 
 class SoundStimulus():
     def __init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):

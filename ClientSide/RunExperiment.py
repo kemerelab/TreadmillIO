@@ -155,7 +155,6 @@ with ExitStack() as stack:
         Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=None))
         warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
 
-
     # ------------------- Read in State Machine States. ------------------------------------------------------------------
     if 'StateMachine' in Config:
         from treadmillio.taskstatemachine import TaskStateMachine
@@ -225,10 +224,14 @@ with ExitStack() as stack:
                 camera['RecordVideo'] = False
 
         for cameraname, camera in Config['Cameras'].items():
-            RunCameraInterface(camera) # this starts a bunch of processes
+            shared_termination_flag = RunCameraInterface(camera) # this starts a bunch of processes
 
+
+    # TODO: Figure out how to handle errors below. The shared termination flag should work, but it doesn't
+    
     # ----------------- Initialization
     ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
+
     Interface.connect()
 
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
@@ -280,3 +283,8 @@ with ExitStack() as stack:
 
 
 
+
+
+
+
+# %%

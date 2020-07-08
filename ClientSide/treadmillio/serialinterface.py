@@ -2,6 +2,7 @@
 import serial
 import struct
 import warnings
+import traceback as tb
 
 class SerialInterface():
     def __init__(self, SerialPort='/dev/ttyS0', version=2, config=None):
@@ -35,6 +36,7 @@ class SerialInterface():
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
         print('SerialInterface: exiting because of exception <{}>'.format(exc_type.__name__))
+        tb.print_tb(exc_traceback)
         if (self.serial):
             self.serial.close()
 

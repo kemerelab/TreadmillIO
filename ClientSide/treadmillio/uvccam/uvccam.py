@@ -86,7 +86,7 @@ try:
     from treadmillio.uvccam.videowriter import start_writer
     from treadmillio.uvccam.camerainterface import start_camera
     from treadmillio.uvccam.camerawindow import start_window
-except:
+except ModuleNotFoundError:
     from videowriter import start_writer
     from camerainterface import start_camera
     from camerawindow import start_window
@@ -152,7 +152,7 @@ def RunCameraInterface(config, no_escape=True):
     all_processes['Pyglet{}'.format(num_cameras)] = camera_process
     pyglet_process.start()     # Launch the camera frame acquisition process
 
-    print('Function exited')
+    return terminate_flag
     #### That's all folks!!!
 
 def main():

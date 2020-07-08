@@ -131,6 +131,7 @@ class Stimulus():
 class ALSAPlaybackSystem():
     def __init__(self, dev_name, config, file_root, control_pipe, log_directory=None):
         self.running = False
+        self.adevice = None
 
         if not log_directory:
             warnings.warn("XRuns will be logged in cwd.")
@@ -210,7 +211,8 @@ class ALSAPlaybackSystem():
         ######
 
     def __del__(self):
-        self.adevice.close()
+        if self.adevice:
+            self.adevice.close()
 
     def set_gain(self, stimulus, gain):
         self.stimuli[stimulus].gain = gain
@@ -247,6 +249,8 @@ class ALSAPlaybackSystem():
 
 class ALSARecordSystem():
     def __init__(self, dev_name, config, log_directory=None):
+        self.adevice = None
+
         if not log_directory:
             warnings.warn("Recording microphone input to cwd because log file wasn't specified.")
             log_directory = os.getcwd()
@@ -298,7 +302,8 @@ class ALSARecordSystem():
         ######
 
     def __del__(self):
-        self.adevice.close()
+        if self.adevice:
+            self.adevice.close()
 
 
     def record(self):
