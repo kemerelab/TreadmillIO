@@ -97,7 +97,7 @@ for fs in sampling_rates:
                 wf.writeframesraw(s)
                 
         # Save sound parameters
-    with open(os.path.join(output_dir,filename.split('.')[0] + '.json'), 'w') as f:
+    with open(os.path.join(sound_dir,filename.split('.')[0] + '.json'), 'w') as f:
         d = {'num_channels': num_channels,
              'fs': fs, 
              'T': T,
@@ -108,81 +108,4 @@ for fs in sampling_rates:
              't_chord': t_chord,
              't_gate': t_gate}
         f.write(json.dumps(d, indent=4))
-
-
-# In[ ]:
-
-
-
-
-
-# In[ ]:
-
-
-# Check file header
-with wave.open(output_dir + filename, 'rb') as wf:
-    T_actual = wf.getnframes() / wf.getframerate()
-    print('Number of channels: %d' % wf.getnchannels())
-    print('Duration:           %.2f' % T_actual)
-    print('')
-
-
-# In[ ]:
-
-
-# Play audio
-print('Playing file %s (%.2f seconds)' % (filename, T_actual))
-os.system('aplay %s' % (output_dir + filename))
-print('done.')
-
-
-# In[ ]:
-
-
-filename = 'tone_3kHz_square.wav'
-
-# Audio settings
-num_channels = 1
-fs = 48000.0 # Hz
-T = 5.0 # duration (s)
-freq = 3000.0 # frequency (Hz)
-A_max = 32767.0 # max amplitude (short)
-A = 0.25*A_max
-
-with wave.open(output_dir + filename,'wb') as wf:
-    # File settings
-    wf.setnchannels(num_channels) # mono
-    wf.setsampwidth(2) # 2 bytes = short
-    wf.setframerate(fs)
-
-    # Write frames to file object
-    for i in range(int(T * fs)):
-        s = int(A* ((math.floor(math.sin(2*math.pi*freq*float(i)/fs)) + 0.5)*2))
-        s = struct.pack('<h', s)
-        for j in range(num_channels):
-            wf.writeframesraw(s)
-
-
-# In[ ]:
-
-
-# Save sound parameters
-with open(output_dir + filename.split('.')[0] + '.json', 'w') as f:
-    d = {'num_channels': num_channels,
-         'fs': fs, 
-         'T': T,
-         'A': A,
-         'frequency': freq}
-    f.write(json.dumps(d, indent=4))
-
-
-# In[ ]:
-
-
-# Check file header
-with wave.open(output_dir + filename, 'rb') as wf:
-    T_actual = wf.getnframes() / wf.getframerate()
-    print('Number of channels: %d' % wf.getnchannels())
-    print('Duration:           %.2f' % T_actual)
-    print('')
 
