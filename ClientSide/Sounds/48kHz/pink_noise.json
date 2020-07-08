@@ -1,8 +1,0 @@
-{
-    "num_channels": 1,
-    "fs": 48000.0,
-    "T": 10.0,
-    "A": 8191.75,
-    "method": "voss",
-    "num_sources": 16
-}
