@@ -287,8 +287,8 @@ class ALSARecordSystem():
 
         self.adevice.enable_timestamps()
 
-        self.logfilename = os.path.join(log_directory, 'microphone.wav.log')
-        self.soundfilename = os.path.join(log_directory, 'microphone.wav')
+        self.logfilename = os.path.join(log_directory, '{}.wav.log'.format(dev_name))
+        self.soundfilename = os.path.join(log_directory, '{}.wav'.format(dev_name))
 
         print('Recording microphone input in: {}.\n'.format(self.soundfilename))
         print('\nALSA record configuration ' + '-'*10 + '\n')
