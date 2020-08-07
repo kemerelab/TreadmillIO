@@ -128,7 +128,7 @@ encoder_gain = 4096.0
 if 'Maze' in Config:
     if 'Length' in Config['Maze']:
         virtual_track_length = Config['Maze']['Length'] #cm
-    if 'Diameter' in Config['Maze']:
+    if 'WheelDiameter' in Config['Maze']:
         d = Config['Maze']['WheelDiameter'] #cm diameter of the physical wheel; 150cm
     if 'EncoderGain' in Config['Maze']:
         encoder_gain = Config['Maze']['EncoderGain']
