@@ -86,8 +86,11 @@ class ClassicalRewardZone():
                         self.sound_controller.Beeps[self.reward_sound].play(time) # Play Reward sound
 
         elif self.reset_zone:
-            if inside(self.reset_zone, pos):
+            if inside(self.reset_zone, pos) and not self.active:
+                self.current_reward_number = 0
                 self.active = True
+
+
 
 
 class OperantRewardZone(ClassicalRewardZone):
@@ -116,7 +119,8 @@ class OperantRewardZone(ClassicalRewardZone):
                         self.sound_controller.Beeps[self.reward_sound].play(time) # Play Reward sound
 
         elif self.reset_zone:
-            if inside(self.reset_zone, pos):
+            if inside(self.reset_zone, pos) and not self.active:
+                self.current_reward_number = 0
                 self.active = True
 
 
