@@ -1,6 +1,6 @@
 import time
 from typing import Tuple, Union
-import random
+import numpy
 
 def inside(zone: Tuple[int,int], pos: int) -> bool:
     if (zone[1] > zone[0]): # take into account the fact that the track is circular
@@ -70,6 +70,7 @@ class ClassicalRewardZone():
         self.current_reward_number = 0
         self.last_reward_time = 0
         self.active = True
+        self.random_active = True
 
 
     def update(self, time, pos):
@@ -117,24 +118,30 @@ class OperantRewardZone(ClassicalRewardZone):
             if time > (self.last_reward_time + self.refractory_period ):
                 if (self.current_reward_number < self.max_rewards): 
                     do_random_reward = False
-                    if self.random_assist:
-                        if (random.random() < self.random_assist):
+                    if self.random_assist and self.random_active:
+                        self.random_active = False # NOTE: This will make it impossible for multiple free rewards to be delivered in a zone regardless of max_rewards parameter
+                        r = numpy.random.rand()
+                        if (r < self.random_assist):
                             do_random_reward = True
-                    if ((gpio & (0x01 << (self.lick_pin-1))) > 0) or (do_random_reward):
+
+                    mouse_licked = ((gpio & (0x01 << (self.lick_pin-1))) > 0)
+                    if mouse_licked or (do_random_reward):
                         self.last_reward_time = time
                         self.current_reward_number += 1
                         if (self.current_reward_number >= self.max_rewards):
                             self.active = False
-
+			
                         self.io_interface.pulse_output(self.pin, time + self.pulse_length) # Trigger GPIO pulse
                         
                         if self.reward_sound and self.sound_controller:
                             self.sound_controller.Beeps[self.reward_sound].play(time) # Play Reward sound
 
         elif self.reset_zone:
-            if inside(self.reset_zone, pos) and not self.active:
-                self.current_reward_number = 0
-                self.active = True
+            if inside(self.reset_zone, pos):
+                self.random_active = True
+                if not self.active:
+                    self.current_reward_number = 0
+                    self.active = True
 
 
 
