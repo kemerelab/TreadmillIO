@@ -16,6 +16,7 @@
 import time
 import datetime
 import os
+import shutil
 import argparse
 import yaml
 import csv
@@ -43,6 +44,8 @@ parser.add_argument('-R','--random-seed', default=None,
                     help='Random seed. If specified, this also overrides the YAML configuration file.')
 parser.add_argument('--output-dir', default=None,
                     help='Directory to write output file (defaults to cwd)')
+parser.add_argument('--no-check-space', default=None,
+                    help='Exits if less than 10 GB of space is available.')
 
 
 args = parser.parse_args()
@@ -94,8 +97,19 @@ if DoLogCommands:
     if log_directory != orig_log_directory:
         warnings.warn('Specified experiment logs directory {} exists, using {}'.format(orig_log_directory, log_directory))
 
+
     print('Creating log directory: {}\n'.format(log_directory))
     os.makedirs(log_directory)
+
+    # Check for available space!
+    if not args.no_check_space:
+        disk_total, disk_used, disk_free = shutil.disk_usage(log_directory)
+        if disk_free < 10*1024.0**3: # if less than 10 GB is available, exit
+            print("\n!!!!    Only {} MB available, exiting. Use the '--no-check-space' "
+             "command line option to override.    !!!!".format(disk_free/(1024.0**2)))
+            os.removedirs(log_directory)
+            exit(0)
+
 
 else:
     print('#'*80, '\n')

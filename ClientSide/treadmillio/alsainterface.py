@@ -166,7 +166,7 @@ class ALSAPlaybackSystem():
             print('Adding stimulus {}...'.format(stimulus_name))
             if stimulus.get('Device', 'Default1') in channel_labels:
                 channel = channel_labels[stimulus.get('Device', 'Default1')]
-                gain = stimulus.get('BaselineGain', 0)
+                gain = stimulus.get('OffGain', -90.0)
                 filename = os.path.join(file_root, stimulus['Filename'])
                 self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
                 k = k + 1

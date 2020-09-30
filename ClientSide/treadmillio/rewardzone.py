@@ -1,5 +1,6 @@
 import time
 from typing import Tuple, Union
+import random
 
 def inside(zone: Tuple[int,int], pos: int) -> bool:
     if (zone[1] > zone[0]): # take into account the fact that the track is circular
@@ -102,21 +103,33 @@ class OperantRewardZone(ClassicalRewardZone):
         else:
             self.lick_pin = gpio_interface.GPIOs[params['LickPin']]['Number'] # We are going to bit mask raw GPIO for this
 
+        self.random_assist = None
+        if ('RandomAssist' in params):
+            if not ( (params['RandomAssist'] >= 0.0) and (params['RandomAssist'] <= 1.0) ):
+                raise ValueError('RandomAssist Parameter of Operant Reward zone must be between 0.0 and 1.0!')
+            self.random_assist = params['RandomAssist']
+
+
         self.Type = 'Operant'
 
     def update(self, time, pos, gpio):
         if inside(self.active_zone, pos):
             if time > (self.last_reward_time + self.refractory_period ):
-                if (self.current_reward_number < self.max_rewards) and ((gpio & (0x01 << (self.lick_pin-1))) > 0):
-                    self.last_reward_time = time
-                    self.current_reward_number += 1
-                    if (self.current_reward_number >= self.max_rewards):
-                        self.active = False
+                if (self.current_reward_number < self.max_rewards): 
+                    do_random_reward = False
+                    if self.random_assist:
+                        if (random.random() < self.random_assist):
+                            do_random_reward = True
+                    if ((gpio & (0x01 << (self.lick_pin-1))) > 0) or (do_random_reward):
+                        self.last_reward_time = time
+                        self.current_reward_number += 1
+                        if (self.current_reward_number >= self.max_rewards):
+                            self.active = False
 
-                    self.io_interface.pulse_output(self.pin, time + self.pulse_length) # Trigger GPIO pulse
-                    
-                    if self.reward_sound and self.sound_controller:
-                        self.sound_controller.Beeps[self.reward_sound].play(time) # Play Reward sound
+                        self.io_interface.pulse_output(self.pin, time + self.pulse_length) # Trigger GPIO pulse
+                        
+                        if self.reward_sound and self.sound_controller:
+                            self.sound_controller.Beeps[self.reward_sound].play(time) # Play Reward sound
 
         elif self.reset_zone:
             if inside(self.reset_zone, pos) and not self.active:
