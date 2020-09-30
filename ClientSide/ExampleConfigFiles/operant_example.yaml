@@ -103,7 +103,7 @@ RewardZones:
     Reward1:
       Type: 'Operant'
       LickPin: 'Lick'
-      RandomAssist: 0 # Probability of getting a reward without a lick
+      RandomAssist: 0.5 # Probability of getting a reward without a lick
       DispensePin: 'Reward'
       PumpRunTime: 1000 # How long to run the reward pump for
       MaxSequentialRewards: 1
