@@ -253,7 +253,7 @@ with ExitStack() as stack:
             log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
         if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}')
+            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {pos}')
 
         # -------------------- Updates -------------------- 
         Interface.update_pulses() # lower any outstanding GPIO pulses
