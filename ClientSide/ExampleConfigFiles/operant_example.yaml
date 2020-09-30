@@ -5,14 +5,14 @@ Info: # "Info" configuration options can be overridden by command line options
   TaskType: Auditory VR Example
 
 Preferences:
-  HeartBeat: 500 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  HeartBeat: 2000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
 
 GPIO: # A list of GPIO pins used in the task
   Lick: # This is an arbitrary label used later to configure Reward
-    Number: 2 # This is the pin number from the board
+    Number: 3 # This is the pin number from the board
     Type: 'Input' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
                            # (where the pull-down/pull-up resistors are enabled).
     Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
@@ -25,14 +25,14 @@ GPIO: # A list of GPIO pins used in the task
 
 Maze:
   Type: 'VR' # VR or physical
-  EncoderGain: 4096.0 # Encoder value per revolution
+  EncoderGain: 8192.0 # Encoder value per revolution
   Length: 160.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
   WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
   TrackTransform: None # Not currently implemented.
 
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/96kHz'
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
 
   Defaults:
     BaselineGain: 0.0 # Max gain for linear stimuli
@@ -103,7 +103,7 @@ RewardZones:
     Reward1:
       Type: 'Operant'
       LickPin: 'Lick'
-      RandomAssist: 0.5 # Probability of getting a reward without a lick
+      RandomAssist: 0 # Probability of getting a reward without a lick
       DispensePin: 'Reward'
       PumpRunTime: 1000 # How long to run the reward pump for
       MaxSequentialRewards: 1
