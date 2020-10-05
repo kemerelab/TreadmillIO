@@ -113,7 +113,7 @@ class OperantRewardZone(ClassicalRewardZone):
 
         self.Type = 'Operant'
 
-    def update(self, time, pos, gpio):
+    def update(self, time, pos, gpio, logger=None):
         if inside(self.active_zone, pos):
             if time > (self.last_reward_time + self.refractory_period ):
                 if (self.current_reward_number < self.max_rewards): 
@@ -135,6 +135,10 @@ class OperantRewardZone(ClassicalRewardZone):
                         
                         if self.reward_sound and self.sound_controller:
                             self.sound_controller.Beeps[self.reward_sound].play(time) # Play Reward sound
+
+                        if logger:
+                            logger([time, mouse_licked, do_random_reward, pos, gpio]) # Log the reward event if logging
+
 
         elif self.reset_zone:
             if inside(self.reset_zone, pos):
