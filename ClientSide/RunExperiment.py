@@ -222,7 +222,7 @@ with ExitStack() as stack:
 
         if RewardZones and DoLogCommands:
             # Create state machine log file and write header
-            reward_zone_log = stack.enter_context(open(os.path.join(log_directory, 'RewardzoneLog.csv'), 'w', newline=''))
+            reward_zone_log = stack.enter_context(open(os.path.join(log_directory, 'RewardzoneLog.csv'), 'w', newline='', buffering=1))
             print(f'Reward Zone Log File.\n   Version {NamedVersion}',file=reward_zone_log)
             reward_zone_writer = csv.writer(reward_zone_log)
 
@@ -296,7 +296,7 @@ with ExitStack() as stack:
 
         if RewardZones:
             if DoLogCommands:
-                RewardZones.update_reward_zones(MasterTime, pos, GPIO, reward_zone_writer) # update any VR-position rewards
+                RewardZones.update_reward_zones(MasterTime, pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
             else:
                 RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
 
