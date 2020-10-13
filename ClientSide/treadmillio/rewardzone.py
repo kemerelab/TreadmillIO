@@ -27,12 +27,12 @@ class RewardZoneController():
             elif (reward['Type'] == 'Operant'):
                 self.Zones[reward_name] = OperantRewardZone(reward, gpio_interface, sound_controller)
 
-    def update_reward_zones(self, time, pos, gpio):
+    def update_reward_zones(self, time, pos, gpio, logger=None):
         for _, reward in self.Zones.items():
             if reward.Type == 'Classical':
-                reward.update(time, pos)
+                reward.update(time, pos, logger)
             elif reward.Type == 'Operant':
-                reward.update(time, pos, gpio)
+                reward.update(time, pos, gpio, logger)
 
 
 class ClassicalRewardZone():
@@ -73,7 +73,7 @@ class ClassicalRewardZone():
         self.random_active = True
 
 
-    def update(self, time, pos):
+    def update(self, time, pos, gpio, logger=None):
         if inside(self.active_zone, pos):
             if time > (self.last_reward_time + self.refractory_period ):
                 if (self.current_reward_number < self.max_rewards):
@@ -104,6 +104,7 @@ class OperantRewardZone(ClassicalRewardZone):
         else:
             self.lick_pin = gpio_interface.GPIOs[params['LickPin']]['Number'] # We are going to bit mask raw GPIO for this
 
+        self.awaiting_zone_entry = True
         self.random_assist = None
         if ('RandomAssist' in params):
             if not ( (params['RandomAssist'] >= 0.0) and (params['RandomAssist'] <= 1.0) ):
@@ -113,32 +114,39 @@ class OperantRewardZone(ClassicalRewardZone):
 
         self.Type = 'Operant'
 
-    def update(self, time, pos, gpio):
+    def update(self, time, pos, gpio, logger=None):
         if inside(self.active_zone, pos):
-            if time > (self.last_reward_time + self.refractory_period ):
-                if (self.current_reward_number < self.max_rewards): 
-                    do_random_reward = False
-                    if self.random_assist and self.random_active:
-                        self.random_active = False # NOTE: This will make it impossible for multiple free rewards to be delivered in a zone regardless of max_rewards parameter
-                        r = numpy.random.rand()
-                        if (r < self.random_assist):
-                            do_random_reward = True
+            do_random_reward = False
 
+            if self.awaiting_zone_entry:
+                if self.random_assist:
+                    r = numpy.random.rand()
+                    if (r < self.random_assist):
+                        do_random_reward = True # Deliver reward classically this tick!
+                logger(['Entered', time, pos, gpio, do_random_reward]) # Log the reward event if logging
+                self.awaiting_zone_entry = False
+
+            if time > (self.last_reward_time + self.refractory_period ):
+                if self.active: 
                     mouse_licked = ((gpio & (0x01 << (self.lick_pin-1))) > 0)
                     if mouse_licked or (do_random_reward):
-                        self.last_reward_time = time
-                        self.current_reward_number += 1
+                        self.last_reward_time = time # For refractory period
+                        self.current_reward_number += 1 # For maximum number of rewards
                         if (self.current_reward_number >= self.max_rewards):
-                            self.active = False
+                            self.active = False # No more rewards after this!
 			
                         self.io_interface.pulse_output(self.pin, time + self.pulse_length) # Trigger GPIO pulse
                         
                         if self.reward_sound and self.sound_controller:
                             self.sound_controller.Beeps[self.reward_sound].play(time) # Play Reward sound
 
+                        if logger:
+                            logger(['Reward', time, pos, gpio, do_random_reward, mouse_licked]) # Log the reward event if logging
+
+
         elif self.reset_zone:
             if inside(self.reset_zone, pos):
-                self.random_active = True
+                self.awaiting_zone_entry = True
                 if not self.active:
                     self.current_reward_number = 0
                     self.active = True

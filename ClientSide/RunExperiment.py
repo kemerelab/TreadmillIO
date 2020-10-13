@@ -220,6 +220,13 @@ with ExitStack() as stack:
             print(f'State Machine Log File.\n   Version {NamedVersion}',file=state_machine_log)
             state_log_writer = csv.writer(state_machine_log)
 
+        if RewardZones and DoLogCommands:
+            # Create state machine log file and write header
+            reward_zone_log = stack.enter_context(open(os.path.join(log_directory, 'RewardzoneLog.csv'), 'w', newline='', buffering=1))
+            print(f'Reward Zone Log File.\n   Version {NamedVersion}',file=reward_zone_log)
+            reward_zone_writer = csv.writer(reward_zone_log)
+
+
         if Profiling:
             execution_log = stack.enter_context(open(os.path.join(log_directory, 'execution.csv'), 'w', newline=''))
             execution_writer = csv.writer(execution_log)
@@ -288,7 +295,10 @@ with ExitStack() as stack:
             SoundController.update_localized(pos) # update VR-position-dependent sounds
 
         if RewardZones:
-            RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
+            if DoLogCommands:
+                RewardZones.update_reward_zones(MasterTime, pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
+            else:
+                RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
 
         if Profiling and DoLogCommands:
             exec_time = time.monotonic() - last_ts
