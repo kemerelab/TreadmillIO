@@ -27,7 +27,7 @@ import warnings
 from contextlib import ExitStack
 
 
-NamedVersion = '1.0'
+NamedVersion = '1.1'
 Profiling = False
 
 
