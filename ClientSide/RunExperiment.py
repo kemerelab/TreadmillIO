@@ -257,6 +257,8 @@ with ExitStack() as stack:
 
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
     initialUnwrappedencoder = UnwrappedEncoder
+    if DoLogCommands:
+        log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0]) # Log the initial data from serial interface
 
     if SoundController:
         SoundController.start_capture() # TODO: This doesn't currently do anything
