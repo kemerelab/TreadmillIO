@@ -28,7 +28,7 @@ from contextlib import ExitStack
 
 
 NamedVersion = '1.0'
-Profiling = True
+Profiling = False
 
 
 ### Maybe should add argcomplete for this program?
