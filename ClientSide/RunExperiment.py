@@ -294,7 +294,7 @@ with ExitStack() as stack:
         pos = unwrapped_pos % virtual_track_length
 
         if SoundController:
-            SoundController.update_localized(pos) # update VR-position-dependent sounds
+            SoundController.update_localized(pos, unwrapped_pos) # update VR-position-dependent sounds
 
         if RewardZones:
             if DoLogCommands:

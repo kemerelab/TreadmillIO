@@ -159,6 +159,12 @@ class SoundStimulusController():
             #                     fillcolor=stimulus['Color'])
             new_stimulus = LocalizedSound(track_length, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
+        elif stimulus['Type'] == 'MultilapBackground':
+            if not track_length:
+                raise(ValueError('SoundStimulus: Illegal to define a "MultilapBackgroundSound" sound without defining the Maze->Length.'))
+            # visualization.add_zone_position(??? , ???, fillcolor=stimulus['Color'])
+            new_stimulus = MultilapBackgroundSound(track_length, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
+            self.LocalizedStimuli[stimulus_name] = new_stimulus
         else:
             raise ValueError('Unknown stimulus type \'{}\'.'.format(stimulus['Type']))
 
@@ -190,10 +196,10 @@ class SoundStimulusController():
         if update_dict:
             self.alsa_playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
-    def update_localized(self, pos):
+    def update_localized(self, pos, unwrapped_pos):
         update_dict = {}
         for _, sound in self.LocalizedStimuli.items():
-            pos_gain =  sound.pos_update_gain(pos)
+            pos_gain =  sound.pos_update_gain(pos, unwrapped_pos)
             if pos_gain is not None:
                 update_dict[sound.name] =  db2lin(pos_gain)
         if update_dict:
@@ -306,6 +312,18 @@ class LocalizedSound(SoundStimulus):
         self.maxGain = self.baseline_gain
         self.minGain = stimulus_params['Modulation']['CutoffGain']
 
+        if 'MultilapActiveZone' in stimulus_params['Modulation']:
+            b = stimulus_params['Modulation']['MultilapActiveZone']
+            if len(b) != 2:
+                raise(ValueError('SoundStimulus configuration error: MultilapActiveZone should be length 2. Read in {}'.format(b)))
+            if (b[0] < 0.0):
+                raise(ValueError('MultilapActiveZone must start at or after unwrapped position 0! (Read in {})'.format(b)))
+            if (b[1] <= b[0]):
+                raise(ValueError('MultilapActiveZone end must come after start! (Read in {})'.format(b)))
+            self.multilap_bounds = b
+        else:
+            self.multilap_bounds = None
+
     def linear_gain_from_pos(self, pos):
         relpos = (pos - self.center) % self.trackLength
         if (relpos  > self.trackLength / 2):
@@ -317,7 +335,7 @@ class LocalizedSound(SoundStimulus):
         else:
             return (1 - abs(relpos/self.half)) * (self.maxGain - self.minGain) + self.minGain
 
-    def pos_update_gain(self, pos):
+    def pos_update_gain(self, pos, unwrapped_pos):
         relpos = (pos - self.center) % self.trackLength
         if (relpos  > self.trackLength / 2):
             relpos = relpos - self.trackLength
@@ -327,6 +345,10 @@ class LocalizedSound(SoundStimulus):
             new_gain = self.off_gain
         else:
             new_gain = (1 - abs(relpos/self.half)) * (self.maxGain - self.minGain) + self.minGain
+
+        if self.multilap_bounds:
+            if (unwrapped_pos <= self.multilap_bounds[0]) or (unwrapped_pos >= self.multilap_bounds[1]):
+                new_gain = self.off_gain
 
         return new_gain
         #SoundStimulus.change_gain(self, new_gain)
@@ -347,6 +369,41 @@ class LocalizedSound(SoundStimulus):
             return False, ValueError('Config file processing error: {} is missing "Modulation: Width" parameter.'.format(name))
         if not ('CutoffGain' in config['Modulation']):
             return False, ValueError('Config file processing error: {} is missing "Modulation: CutoffGain" parameter.'.format(name))
+
+        return True, None
+
+class MultilapBackgroundSound(SoundStimulus):
+    def __init__(self, track_length, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
+
+        # TODO check that these are all set. I need to know my name in order to give
+        #  a meaningful warning, though.
+        b = stimulus_params['MultilapActiveZone']
+        if len(b) != 2:
+            raise(ValueError('SoundStimulus configuration error: MultilapActiveZone should be length 2. Read in {}'.format(b)))
+        if (b[0] < 0):
+            raise(ValueError('MultilapActiveZone must start at or after unwrapped position 0! (Read in {})'.format(b)))
+        if (b[1] <= b[0]):
+            raise(ValueError('MultilapActiveZone end must come after start! (Read in {})'.format(b)))
+        self.multilap_bounds = b
+
+
+    def pos_update_gain(self, pos, unwrapped_pos):
+        if (unwrapped_pos <= self.multilap_bounds[0]) or (unwrapped_pos >= self.multilap_bounds[1]): # outside of multilap active zone
+            new_gain = self.off_gain
+        else: # inside of multilap active zone
+            new_gain = self.baseline_gain
+
+        return new_gain
+        #SoundStimulus.change_gain(self, new_gain)
+
+    @classmethod
+    def valid(cls, name, config):
+        base_valid, error = super(MultilapBackgroundSound, cls).valid(name, config)
+        if not base_valid:
+            return False, error
+        if not ('MultilapActiveZone' in config):
+            return False, ValueError('Config file processing error: {} is missing "MultilapActiveZone" parameter.'.format(name))
 
         return True, None
 
@@ -410,6 +467,8 @@ def validate_sound_config(config):
     for stim_name, stim in config['StimuliList'].items():
         if stim['Type'] == 'Background':
             valid, error = SoundStimulus.valid(stim_name, stim)
+        elif stim['Type'] == 'MultilapBackground':
+            valid, error = MultilapBackgroundSound.valid(stim_name, stim)
         elif stim['Type'] == 'Localized':
             valid, error = LocalizedSound.valid(stim_name, stim)
         elif stim['Type'] == 'Beep':
