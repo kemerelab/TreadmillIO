@@ -27,7 +27,7 @@ import warnings
 from contextlib import ExitStack
 
 
-NamedVersion = '1.0'
+NamedVersion = '1.1'
 Profiling = False
 
 
@@ -275,9 +275,6 @@ with ExitStack() as stack:
         if DoLogCommands:
             log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
-        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {pos}. Lap: {unwrapped_pos // virtual_track_length}')
-
         # -------------------- Updates -------------------- 
         Interface.update_pulses() # lower any outstanding GPIO pulses
 
@@ -292,6 +289,9 @@ with ExitStack() as stack:
 
         unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
         pos = unwrapped_pos % virtual_track_length
+
+        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
+            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {pos}. Lap: {unwrapped_pos // virtual_track_length}')
 
         if SoundController:
             SoundController.update_localized(pos, unwrapped_pos) # update VR-position-dependent sounds
