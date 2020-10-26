@@ -321,6 +321,7 @@ class LocalizedSound(SoundStimulus):
             if (b[1] <= b[0]):
                 raise(ValueError('MultilapActiveZone end must come after start! (Read in {})'.format(b)))
             self.multilap_bounds = b
+            self.multilap_state = 'waiting'
         else:
             self.multilap_bounds = None
 
@@ -347,8 +348,16 @@ class LocalizedSound(SoundStimulus):
             new_gain = (1 - abs(relpos/self.half)) * (self.maxGain - self.minGain) + self.minGain
 
         if self.multilap_bounds:
-            if (unwrapped_pos <= self.multilap_bounds[0]) or (unwrapped_pos >= self.multilap_bounds[1]):
+            if (unwrapped_pos <= self.multilap_bounds[0]) and (self.multilap_state =='waiting'):
                 new_gain = self.off_gain
+            elif (unwrapped_pos >= self.multilap_bounds[1]) or (self.multilap_state == 'past'): # outside of multilap active zone
+                if self.multilap_state == 'inside':
+                    self.multilap_state = 'past'
+                new_gain = self.off_gain
+            else: # inside of multilap active zone OR before and already entered AND did not already go past
+                if self.multilap_state == 'waiting':
+                    self.multilap_state = 'inside'
+                # new_gain = new_gain calculated
 
         return new_gain
         #SoundStimulus.change_gain(self, new_gain)
@@ -386,12 +395,19 @@ class MultilapBackgroundSound(SoundStimulus):
         if (b[1] <= b[0]):
             raise(ValueError('MultilapActiveZone end must come after start! (Read in {})'.format(b)))
         self.multilap_bounds = b
+        self.multilap_state = 'waiting'
 
 
     def pos_update_gain(self, pos, unwrapped_pos):
-        if (unwrapped_pos <= self.multilap_bounds[0]) or (unwrapped_pos >= self.multilap_bounds[1]): # outside of multilap active zone
+        if (unwrapped_pos <= self.multilap_bounds[0]) and (self.multilap_state =='waiting'):
             new_gain = self.off_gain
-        else: # inside of multilap active zone
+        elif (unwrapped_pos >= self.multilap_bounds[1]) or (self.multilap_state == 'past'): # outside of multilap active zone
+            if self.multilap_state == 'inside':
+                self.multilap_state = 'past'
+            new_gain = self.off_gain
+        else: # inside of multilap active zone OR before and already entered AND did not already go past
+            if self.multilap_state == 'waiting':
+                self.multilap_state = 'inside'
             new_gain = self.baseline_gain
 
         return new_gain
