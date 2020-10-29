@@ -178,7 +178,7 @@ class StateMachineViewer(Viewer):
         self._nodes = nx.draw_networkx_nodes(self.NGraph, 
                                              self._pos, 
                                              node_size=500,
-                                             node_colors=self._c,
+                                             node_color=self._c,
                                              ax=self.ax)
         self._nodes.set_clim([0.0, 1.0]) # set cmap limits for PathCollection object
         self._edges = nx.draw_networkx_edges(self.NGraph, 
