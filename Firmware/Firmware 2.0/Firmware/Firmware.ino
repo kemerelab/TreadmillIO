@@ -29,6 +29,8 @@ void sendData() {
         TreadmillData.GPIO = (GPIOD_PDIR & 0xFF) + ((GPIOB_PDIR & 0x0F) << 8);
         TreadmillData.AUXIO = (GPIOC_PDIR & 0xFFF);
         TreadmillData.UnwrappedEncoderTicks = wheelPosition.read();
+        // for testing, we can just skip reading and just increment the encoder value
+        // TreadmillData.UnwrappedEncoderTicks = (TreadmillData.UnwrappedEncoderTicks + 8); 
         Serial.write((char *) &TreadmillData, sizeof(TreadmillDataStruct));
         Serial.flush();
     }
