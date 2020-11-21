@@ -1,3 +1,7 @@
+/* This Firmware is designed for a board based on the Teensy 3.5. The 3.5 has many IOs, but is
+ *  also 5V safe, which makes life easy in terms of people plugging stuff in.
+ */
+
 #include "Firmware.h"
 
 #define ENCODER_OPTIMIZE_INTERRUPTS // this messes up attachInterrupts
