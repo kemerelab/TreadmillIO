@@ -872,7 +872,11 @@ class TaskStateMachine():
             if 'FirstState' in state and state['FirstState']:
                 self.FirstState = state_name
 
-            if (state['Type'] == 'Delay'):
+            if (state['Type'] == 'Base'):
+                self.StateMachineDict[state_name] = TaskState(
+                    state_name, state, io_interface)
+
+            elif (state['Type'] == 'Delay'):
                 self.StateMachineDict[state_name] = DelayState(
                     state_name, state, io_interface)
 
