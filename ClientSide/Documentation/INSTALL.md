@@ -43,6 +43,7 @@ We compress the video, which requires `ffmpeg`:
 
 `sudo apt install ffmpeg`
 
+For some odd reason, the pupil-labs version of libuvc fails for camera resolutions of 1080p or greater (see [unresolved issue on github](https://github.com/pupil-labs/pyuvc/issues/73)). The issue appears to be the estimation of the bandwidth size of packets from the webcams using their custom bandwidth factor. (see https://github.com/pupil-labs/libuvc/blob/master/src/stream.c#L1038-L1048) This causes a problem at higher bandwidths, such as 1080p, because 1) a bandwidth factor that is too large (>= 4) will create a maximum per packet usage that is larger than all alt-settings (leading to here), but 2) a bandwidth factor that is too small (< 4) will cause some weird JPEG file header error (from who knows where). To fix this, simply comment out their custom code to estimate the config_bytes_per_packet (prior to building!), using the original code in the line above instead. 
 
 
 #### Clone the `TreadmillIO` repository

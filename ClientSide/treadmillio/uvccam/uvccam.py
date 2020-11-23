@@ -98,6 +98,16 @@ class LabeledQueue(Queue):
         ctx = multiprocessing.get_context()
         super(LabeledQueue, self).__init__(*args, **kwargs, ctx=ctx)
         self.frame_type = frame_type
+        self._active = multiprocessing.sharedctypes.RawValue('b', True)
+
+    def is_active(self):
+        return self._active.value
+
+    def pause(self):
+        self._active.value = False
+
+    def restart(self):
+        self._active.value = True
 
 def RunCameraInterface(config, no_escape=True):
     global num_cameras

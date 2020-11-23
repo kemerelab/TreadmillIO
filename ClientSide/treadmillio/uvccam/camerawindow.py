@@ -25,16 +25,42 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
     from pyglet.window import key
 
     class CameraWindow(pyglet.window.Window):
+        # 1080p defaults
+        MAX_BUFFER_MB = 500
+
         def __init__(self, config, frame_queue, quit_flag, no_escape=True):
             self._quit_flag = quit_flag # used to let this process signal everyone else to exit
             self._frame_queue = frame_queue
+
+            self.name = config['FilenameHeader']
+            self.verbose = config.get('Verbose', False)
 
             self.sy = config['ResY']
             self.sx = config['ResX']
             self.number_of_channels = 3 # TODO: Consider handling mono?
 
+            # Determine maximum buffer size in frames
+            bytes_per_frame = self.sy*self.sx*self.number_of_channels
+            if 'BufferSizeFrames' in config:
+                # User-specified size in frames
+                self.buffer_size = config['BufferSizeFrames']
+            elif 'BufferSizeMB' in config:
+                # User-specified size in MB
+                self.buffer_size = int(config['BufferSizeMB']*1.0e6/bytes_per_frame)
+            elif config['ResY'] >= 1080:
+                # If resolution is at least 1080p, then underlying pickler/unpickler
+                # in self._frame_queue cannot keep up. Follow pattern of filling up
+                # buffer and periodically draining queue.
+                self.buffer_size = int(self.MAX_BUFFER_MB*1.0e6/bytes_per_frame)
+            else:
+                # Otherwise, drain queue every call to on_draw().
+                self.buffer_size = 0
+            if self.verbose:
+                print('({}) Max buffer frames: {:2d}'.format(self.name, self.buffer_size))
+
             super().__init__(visible=True, resizable=True)
             #super().__init__(width=self.sx, height=self.sy, visible=True)
+            self.set_caption(self.name)
 
             initial_texture = 128*np.ones((self.sy, self.sx, self.number_of_channels), dtype='uint8')
             self._img = pyglet.image.ImageData(self.sx,self.sy,'BGR',
@@ -59,7 +85,20 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
                 self.graceful_shutdown()
 
         def on_draw(self):
-            while not self._frame_queue.empty():
+            if self._frame_queue.qsize() > self.buffer_size:
+                self._frame_queue.pause()
+                if self.verbose:
+                    print('({}) Visualization queue full. Draining...'.format(self.name))
+                while self._frame_queue.qsize() > 0:
+                    try:
+                        (img, timestamp) = self._frame_queue.get(block=True, timeout=0.1)
+                    except queue.Empty:
+                        continue
+                self._frame_queue.restart()
+                if self.verbose:
+                    print('({}) Finished draining visualization queue.'.format(self.name))
+                self._img.set_data('BGR', -self.sx * self.number_of_channels, img.tobytes())
+            elif not self._frame_queue.empty():
                 (img, timestamp) = self._frame_queue.get()
                 self._img.set_data('BGR', -self.sx * self.number_of_channels, img.tobytes())
             self.clear()
