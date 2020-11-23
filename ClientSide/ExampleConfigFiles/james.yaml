@@ -1,27 +1,8 @@
-# Notes:
-# - I need to smooth poke sensor for patch entry/exit. This could be the biggest
-#   challenge in the current form because I can't think of an easy way to do this
-#   using generic state transitions.
-# - This assumes that all reward volumes are the same, as opposed to varying
-#   reward volume based on bucket volume (i.e. max(min(V_current, V_max), V_min)).
-#   I prefer fixed volume sizes because then only time between rewards
-#   is variable, whereas in the latter case both reward size and time between
-#   rewards are variable.
-# - Turning off the RewardSound automatically after dispensing a reward may lead
-#   to very short gaps between the stimulus if multiple rewards are available in
-#   succession. I don't think this will be much of a problem, though.
-# - ConditionalNextStates should be checked prior to NextState.
-# - I added what I think could be useful configs for multiple audio I/Os.
-# - The "hacky" departures from using simplistic, low-level states are:
-#   - A more complex "Patch" type state that computes when rewards are available.
-#   - A "Reset" value for resetting the patch internal clock.
-#   - Probably whatever we need to smooth the poke sensors.
-
 Info: # "Info" configuration options can be overridden by command line options
-  MouseID: V1A1 # Used to name saved data file
+  MouseID: '' # Used to name saved data file
   Note: '' # Added in a block at the start of saved data file
   Session: '' # This is added to default (date and time)
-  TaskType: Moana Classical Conditioning
+  TaskType: Poisson Drip
 
 Preferences:
   HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
@@ -33,25 +14,31 @@ GPIO: # A list of GPIO pins used in the task
   Reward1:
     Number: 1
     Type: 'Output'
+    Power: True
     Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
                  # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
   Reward2:
     Number: 2
     Type: 'Output'
+    Power: True
     Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
                  # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
   Poke1:
     Number: 3
-    Type: 'Output'
+    Type: 'INPUT'
+    Power: True
   Poke2:
     Number: 4
-    Type: 'Output'
+    Type: 'INPUT'
+    Power: True
   Lick1:
     Number: 5
-    Type: 'Output'
+    Type: 'INPUT'
+    Power: True
   Lick2:
     Number: 6
-    Type: 'Output'
+    Type: 'INPUT'
+    Power: True
 
 Maze:
   Type: 'StateMachine' # VR or physical
@@ -88,6 +75,7 @@ StateMachine:
       Params:
         InPatchSound1: 'Off'
       NextState: 'InPatch2-Enter'
+      
     Interpatch1: # going from reward zone 1 to 2
       Type: 'SetSoundState'
       Params: # allow single value or list format; not sure if this is best syntax
@@ -117,6 +105,12 @@ StateMachine:
       Params:
         InterpatchSound1: 'Off'
         RewardSound2: 'Off'
+      NextState: 'InPatch2-PumpOffDelay'
+    InPatch2-PumpOffDelay: # pump needs 100 ms to recognize logic level change
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 100
       NextState: 'InPatch2-Waiting'
     InPatch2-Waiting: # reward zone 2
       Type: 'Patch'
@@ -141,8 +135,7 @@ StateMachine:
           ConditionType: 'Reward' # require all patches to have this
           Value: 2.0 # threshold size of available reward
           Priority: 1
-        Interpatch2: # leave patch
-          # TODO: need to incorporate smoothing poke sensor
+        InPatch2-Leaving: # leave patch
           ConditionType: 'GPIO'
           Pin: 4 #'Poke2'
           Value: False
@@ -160,17 +153,34 @@ StateMachine:
           Pin: 6 #'Lick2'
           Value: True
           Priority: 1
-        Interpatch2: # leave patch
-          # TODO: need to incorporate smoothing poke sensor
+        InPatch2-Leaving: # leave patch
           ConditionType: 'GPIO'
           Pin: 4 #'Poke2'
           Value: False
           Priority: 2
+    InPatch2-Leaving: # smoothes poke sensor for leaving decisions
+      Type: 'Base'
+      NextState:
+        Interpatch2:
+          ConditionType: 'ElapsedTime'
+          Duration: 500 # ms
+          Priority: 0
+        InPatch2-Waiting:
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: True
+          Priority: 1
     InPatch2-Reward: # dispense reward
       Type: 'Reward'
       Params:
           DispensePin: 'Reward2'
           PumpRunTime: 100
+      NextState: 'InPatch2-PumpOnDelay'
+    InPatch2-PumpOnDelay: # pump needs 100 ms to recognize logic level change
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 100
       NextState: 'InPatch2-Update'
     InPatch2-Update: # update total reward
       Type: 'SetInternalState'
@@ -208,6 +218,12 @@ StateMachine:
       Params:
         InterpatchSound2: 'Off'
         RewardSound1: 'Off'
+      NextState: 'InPatch1-PumpOffDelay'
+    InPatch1-PumpOffDelay: # pump needs 100 ms to recognize logic level change
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 100
       NextState: 'InPatch1-Waiting'
     InPatch1-Waiting: # reward zone 1
       Type: 'Patch'
@@ -232,8 +248,7 @@ StateMachine:
           ConditionType: 'Reward' # require all patches to have this
           Value: 2.0 # threshold size of available reward
           Priority: 1
-        Interpatch1: # leave patch
-          # TODO: need to incorporate smoothing poke sensor
+        InPatch1-Leaving: # leave patch
           ConditionType: 'GPIO'
           Pin: 3 #'Poke1'
           Value: False
@@ -248,16 +263,33 @@ StateMachine:
           ConditionType: 'GPIO'
           Pin: 5 #'Lick1'
           Value: True
-        Interpatch1: # leave patch
-          # TODO: need to incorporate smoothing poke sensor
+        InPatch1-Leaving: # leave patch
           ConditionType: 'GPIO'
           Pin: 3 #'Poke1'
           Value: False
+    InPatch1-Leaving: # smoothes poke sensor for leaving decisions
+      Type: 'Base'
+      NextState:
+        Interpatch1:
+          ConditionType: 'ElapsedTime'
+          Duration: 500 # ms
+          Priority: 0
+        InPatch1-Waiting:
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: True
+          Priority: 1
     InPatch1-Reward: # dispense reward
       Type: 'Reward'
       Params:
           DispensePin: 'Reward1'
           PumpRunTime: 100
+      NextState: 'InPatch1-PumpOnDelay'
+    InPatch1-PumpOnDelay: # pump needs 100 ms to recognize logic level change
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 100
       NextState: 'InPatch1-Update'
     InPatch1-Update: # update total reward
       Type: 'SetInternalState'
@@ -267,9 +299,8 @@ StateMachine:
         Value: 2.0
       NextState: 'InPatch1-Transition'
 
-
 AuditoryStimuli:
-  AudioFileDirectory: '/home/james/Documents/Projects/behavior_system/TreadmillIO/ClientSide/Sounds/48kHz'
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/48kHz'
   Viewer: True
   StimuliList:
     InterpatchSound1: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
@@ -316,8 +347,8 @@ AuditoryStimuli:
   DeviceList:
     Output1:
       Type: 'Output' # Input or Output
-      HWDevice: 'hw:CARD=SoundCard,DEV=0'
-      BufferSize: 16
+      HWDevice: 'hw:CARD=DG,DEV=0'
+      BufferSize: 1024
       NPeriods: 2
       NChannels: 2
       ChannelLabels:
@@ -325,9 +356,83 @@ AuditoryStimuli:
         Speaker2: 1
     Microphone1:
       Type: 'Input'
-      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      HWDevice: 'hw:CARD=DG,DEV=0'
       NChannels: 2
       SamplingRate: 96000
       BufferSize: 1024 
       Record: True
       FilenameHeader: ''
+
+Cameras:
+  Camera1:
+    RecordVideo: True
+    FilenameHeader: 'MouseCam1'
+    Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
+    CameraIndex: 0
+    ResX: 1280 
+    ResY: 720
+    FrameRate: 30
+    Verbose: False
+    CameraParams:
+      Power Line frequency: 2, # 60 Hz
+      Gain: 10
+  Camera2:
+    RecordVideo: True
+    FilenameHeader: 'MouseCam2'
+    Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
+    CameraIndex: 1
+    ResX: 1280 
+    ResY: 720
+    FrameRate: 30
+    Verbose: False
+    CameraParams:
+      Power Line frequency: 2, # 60 Hz
+      Gain: 10
+  # LogitechC920Defaults:
+    # ResX: 1920 
+    # ResY: 1080
+    # FrameRate: 30
+    # CameraParams:
+      # Auto Exposure Mode: 8
+      # Auto Exposure Priority: 1
+      # Absolute Exposure Time: 250
+      # Auto Focus: 1
+      # Absolute Focus: 0
+      # Zoom absolute control: 100
+      # Pan control: 0
+      # Tilt control: 0
+      # Backlight Compensation: 0
+      # Brightness: 128
+      # Contrast: 128
+      # Gain: 0
+      # Power Line frequency: 2
+      # Saturation: 128
+      # Sharpness: 128
+      # White Balance temperature: 4000
+      # White Balance temperature,Auto: 1
+
+# Notes:
+# - Poke sensors are smoothed by transitioning first to a "Leaving" state,
+#   which either returns to the Patch state if the sensor is ON within a 
+#   specified timeout period (500 ms), or transitions to the next Interpatch
+#   state if the timeout period is exceeded. Rather than determining whether
+#   the previous state was "InPatch-Waiting" or "InPatch-Available", it's fine
+#   just to return to "InPatch-Waiting", which will simply transition to
+#   "InPatch-Available" on the next step if reward is already available.
+# - This assumes that all reward volumes are the same, as opposed to varying
+#   reward volume based on bucket volume (i.e. max(min(V_current, V_max), V_min)).
+#   I prefer fixed volume sizes because then only time between rewards
+#   is variable, whereas in the latter case both reward size and time between
+#   rewards are variable.
+# - We've accounted for the corner case in which multiple licks quickly drain
+#   a reservoir with multiple rewards in succession. Note that the syringe
+#   pumps require 100 ms to detect logic level changes (two 50 ms samples), and
+#   to obtain small rewards (2 uL), they are programmed to pulse on a rising edge.
+#   So, each rising and falling edge must be separated by at least 100 ms. The
+#   PumpOnDelay state both 1) ensures logic HIGH will be last for at least 100 ms
+#   and 2) the reward tone will also last for at least 100 ms. PumpOffDelay
+#   ensures that the same for logic LOW. This leads to some slight delays only
+#   in the corner case when an animal is quickly emptying rewards from the reservoir.
+# - The "hacky" departures from using simplistic, low-level states are:
+#   - A more complex "Patch" type state that computes when rewards are available.
+#   - A "Reset" value for resetting the patch internal clock.
