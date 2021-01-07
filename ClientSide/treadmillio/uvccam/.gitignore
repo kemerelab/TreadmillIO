@@ -2,3 +2,4 @@
 build/*
 bInterfaceNumber,
 uvc.c
+uvc.cpython*
