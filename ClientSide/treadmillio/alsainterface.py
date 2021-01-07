@@ -157,7 +157,7 @@ class ALSAPlaybackSystem():
         if len(StimuliList) < 1:
             raise(ValueError('Must specify at least one stimulus!'))
 
-        self.data_buf = np.zeros((buffer_size,2,len(StimuliList))) # data buffer for all data
+        self.data_buf = np.zeros((buffer_size,num_channels,len(StimuliList))) # data buffer for all data
         k = 0
         for stimulus_name, stimulus in StimuliList.items():
             if stimulus_name in ILLEGAL_STIMULUS_NAMES:
@@ -207,7 +207,7 @@ class ALSAPlaybackSystem():
         self.adevice.dumpinfo()
         print('\n\n')
 
-        self.out_buf = np.zeros((buffer_size,2), dtype=dtype, order='C')
+        self.out_buf = np.zeros((buffer_size,num_channels), dtype=dtype, order='C')
         ######
 
     def __del__(self):
