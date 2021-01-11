@@ -1,6 +1,7 @@
 # Optional audio setup on Linux
 While the following instructions have been tested on Ubuntu 20.04, they should work for most Linux distros.
 
+
 ## Disable PulseAudio
 On many Linux systems, including Ubuntu, sounds takes the following path from app to speaker:
 
@@ -39,6 +40,7 @@ systemctl --user start pulseaudio.socket
 systemctl --user start pulseaudio.service
 pulseaudio --start
 ```
+
 
 ## Set default sound device
 The second step in releasing our sound device from other apps (ensuring that `TreadmillIO` will have exclusive access to it) is to set another soundcard as default for ALSA. We first create an ALSA configuration file:
@@ -81,7 +83,8 @@ ctl.!default {
 }
 ```
 
-## Finding soundcard info
+
+## Find soundcard info
 To specify which soundcard and device to use for `TreadmillIO`, we must know the card number and device number we'd like to use. We can determine what capabilities our machine has by looking at the output of a couple of commands:
 
 ```shell
@@ -182,6 +185,54 @@ cat /proc/asound/card0/pcm0c/sub0/hw_params
 ```
 
 Note that the directories under `/proc/asound` may have to be modified for the specific capture device you are investigating; simply dig around in the directory to find it.
+
+
+## Modify soundcard settings
+ALSA allows us to peek into and modify different settings that are available on the soundcard, such as changing the volume or input source. To see a basic view of available controls on a card, enter the following command, where `<name>` represents the card name or number you wish to inspect:
+
+```shell
+amixer -c <name>
+Simple mixer control 'PCM',0
+  Capabilities: pvolume cvolume pswitch pswitch-joined cswitch cswitch-joined
+  Playback channels: Front Left - Front Right - Rear Left - Rear Right - Front Center - Woofer
+  Capture channels: Front Left - Front Right
+  Limits: Playback 0 - 87 Capture 0 - 63
+  Front Left: Playback 83 [95%] [-3.00dB] [on] Capture 27 [43%] [3.00dB] [on]
+  Front Right: Playback 83 [95%] [-3.00dB] [on] Capture 27 [43%] [3.00dB] [on]
+  Rear Left: Playback 83 [95%] [-3.00dB] [on]
+  Rear Right: Playback 83 [95%] [-3.00dB] [on]
+  Front Center: Playback 83 [95%] [-3.00dB] [on]
+  Woofer: Playback 83 [95%] [-3.00dB] [on]
+Simple mixer control 'PCM Capture Source',0
+  Capabilities: enum
+  Items: 'Mic' 'Line' 'Mixer'
+  Item0: 'Mic'
+...
+Simple mixer control 'Mic',0
+  Capabilities: cvolume cswitch cswitch-joined
+  Capture channels: Front Left - Front Right
+  Limits: Capture 0 - 63
+  Front Left: Capture 23 [37%] [0.00dB] [on]
+  Front Right: Capture 23 [37%] [0.00dB] [on]
+Simple mixer control 'Mic',1
+  Capabilities: cvolume cswitch cswitch-joined
+  Capture channels: Front Left - Front Right
+  Limits: Capture 0 - 63
+  Front Left: Capture 23 [37%] [0.00dB] [on]
+  Front Right: Capture 23 [37%] [0.00dB] [on]
+...
+```
+
+Here, we see that each control has several attributes: its capabilities (volume, on/off switch, etc.), channels, limits (for e.g. volume), and current settings. For instance, the settings above indicate that all playback channels are set to 95% volume (-3 dB gain, or on the flip side, 3 dB attenuation), that the `Mic` input source is currently selected, and that the capture volumes of the front left and front right mic channels are both set to 37% (0 dB gain/attenuation).
+
+We could also use the `amixer` command to modify these settings, but it's easier to do so from the interface provided by the `alsamixer` command. Simply run:
+
+```
+alsamixer -c <name>
+```
+
+from the terminal (no flags necessary) and navigate the GUI window to manage each control listed by amixer above. Use the left/right arrow keys to change controls, up/down to change the current setting of that control, and the F-keys to navigate to other views/cards. To avoid distortion, it's best to keep the volume level at or below 0 dB (that is, attenuation only), and let a proper external amplifier boost the signal if needed.
+
 
 ## Resources
 Here are some helpful links to learn more about Linux audio:
