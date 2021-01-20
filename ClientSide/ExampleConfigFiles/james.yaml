@@ -300,7 +300,7 @@ StateMachine:
       NextState: 'InPatch1-Transition'
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/48kHz'
+  AudioFileDirectory: '/home/mcginley-lab/Code/TreadmillIO/ClientSide/Sounds/96kHz'
   Viewer: True
   StimuliList:
     InterpatchSound1: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
@@ -333,32 +333,48 @@ AuditoryStimuli:
       Color: 'pink' # Matplotlib color name used for visualization system
     RewardSound1:
       Type: 'Background'
-      Filename: 'tone_3kHz.wav'
+      Filename: 'tone_12kHz.wav'
       MinimixerInputPort: 3 # minimixer channel input
       BaselineGain: 0.0
       Device: 'Speaker1'
     RewardSound2:
       Type: 'Background'
-      Filename: 'tone_3kHz.wav'
+      Filename: 'tone_12kHz.wav'
       MinimixerInputPort: 3 # minimixer channel input
       BaselineGain: 0.0
       OffGain: -90.0
-      Device: 'Speaker2' # or single device, or list of devicess
+      Device: 'Speaker2' # or single device, or list of devices
   DeviceList:
     Output1:
       Type: 'Output' # Input or Output
-      HWDevice: 'hw:CARD=DG,DEV=0'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
       BufferSize: 1024
       NPeriods: 2
       NChannels: 2
       ChannelLabels:
         Speaker1: 0
         Speaker2: 1
-    Microphone1:
+    StimuliPlayback:
       Type: 'Input'
-      HWDevice: 'hw:CARD=DG,DEV=0'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0'
       NChannels: 2
       SamplingRate: 96000
+      BufferSize: 1024 
+      Record: True
+      FilenameHeader: ''
+    Camera1Microphone:
+      Type: 'Input'
+      HWDevice: 'hw:CARD=C920,DEV=0'
+      NChannels: 2
+      SamplingRate: 16000
+      BufferSize: 1024 
+      Record: True
+      FilenameHeader: ''
+    Camera2Microphone:
+      Type: 'Input'
+      HWDevice: 'hw:CARD=C920_1,DEV=0'
+      NChannels: 2
+      SamplingRate: 16000
       BufferSize: 1024 
       Record: True
       FilenameHeader: ''
