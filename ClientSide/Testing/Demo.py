@@ -9,7 +9,7 @@ parser.add_argument('-P', '--serial-port', default='/dev/ttyACM0',
                    help='TTY device for USB-serial interface (e.g., /dev/ttyUSB0 or COM10)')
 parser.add_argument('-C','--param-file', default='defaults.yaml',  
                     help='YAML file containing task parameters')
-parser.add_argument('--version', default=1, type=int, choices=[1, 2],
+parser.add_argument('--version', default=2, type=int, choices=[1, 2],
                     help='Demo version to use.')
 args = parser.parse_args()
 
@@ -17,7 +17,9 @@ args = parser.parse_args()
 with open(args.param_file, 'r') as f:
     config = yaml.safe_load(f)['GPIO']
 
-if args.version not in [1, 2]:
+if args.version == 1:
+    raise EnvironmentError('Version 1 no longer supported.')
+elif args.version != 2:
     raise ValueError('Unknown version {}.'.format(args.version))
 
 # Create serial interface
