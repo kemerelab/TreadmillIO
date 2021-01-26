@@ -54,7 +54,7 @@ class TaskState:
         self.Type = None
         self.label = label
 
-        print(state_config)
+        #print(state_config)
 
         #self.next_state = state_config['NextState']
         self.io_interface = io_interface
@@ -87,7 +87,7 @@ class TaskState:
                         self.next_state[state_name]['Pin'] = params['Pin'] # this will error if its not specified
                         self.next_state[state_name]['Value'] = params['Value'] # this will error if its not specified
                     elif params['ConditionType'] == 'None':
-                        pass
+                        self.next_state[state_name]['ConditionType'] = 'None'
                     else:
                         self.add_state_transition(state_name, params) # throw error if not implemented for condition
                 else:
@@ -135,6 +135,9 @@ class TaskState:
                     ((condition['ConditionType'] == 'GPIO') and \
                         (self.io_interface.read_pin(condition['Pin']) == condition['Value'])):
                     # (note that we don't even check for "None")
+                    next_state.append(state_name)
+                    priority.append(condition['Priority'])
+                elif condition['ConditionType'] == 'None': # add state transition if unconditional
                     next_state.append(state_name)
                     priority.append(condition['Priority'])
                 elif condition['ConditionType'] not in ['None', 'ElapsedTime', 'GPIO']:
@@ -418,10 +421,14 @@ class SetSoundStimulusState(TaskState):
             for sound, value in params.items():
                 self.Sound[sound] = {}
                 
-                if sound not in sound_controller.BackgroundSounds:
-                    raise(ValueError('SetSoundStimulusState: "{}" not found in Background sounds list.'.format(sound)))
-                else:  
+                if sound in sound_controller.BackgroundSounds:
                     self.Sound[sound]['Sound'] = sound_controller.BackgroundSounds[sound]
+                    self.Sound[sound]['Type'] = 'Background'
+                elif sound in sound_controller.BundledSounds:
+                    self.Sound[sound]['Sound'] = sound_controller.BundledSounds[sound]
+                    self.Sound[sound]['Type'] = 'Bundled'
+                else:
+                    raise(ValueError('SetSoundStimulusState: "{}" not found in Background or Bundled sounds list.'.format(sound)))
                 
                 if value not in ['On','Off']:
                     raise(ValueError("SetSoundStimulusState 'Value' must be 'On' or 'Off'"))
@@ -437,6 +444,10 @@ class SetSoundStimulusState(TaskState):
             warnings.warn("SetSoundStimulusState won't produce sound bc sound is not enabled.", RuntimeWarning)
             self.Sound = None
 
+        # Bundled sounds params
+        self.Index = 0
+        self.IncrementIndex = 0
+
     def set_gain(self):
         if self.Sound:
             for sound, params in self.Sound.items(): 
@@ -447,6 +458,10 @@ class SetSoundStimulusState(TaskState):
         if self.sound_controller:
             if self.Sound:
                 for sound, params in self.Sound.items(): 
+                    if params['Type'] == 'Bundled':
+                        self.Index += self.IncrementIndex
+                        params['Sound'].choose_sound(self.Index)
+                        self.IncrementIndex = 0
                     params['Sound'].change_gain(params['Gain'])
 
                 time = self.io_interface.MasterTime
@@ -500,12 +515,26 @@ class SetInternalState(TaskState):
             raise ValueError('State \'{}\' does not have attribute \'{}\'.'
                              .format(self.ModState, self.ModAttribute))
 
-    def _get_value(self, key):
+    def _get_value_from_key(self, key):
         """Returns special cases for values of internal states."""
         if key.lower() == 'currenttime':
             return self.io_interface.MasterTime
         else:
             raise ValueError('Unknown key \'{}\'.'.format(key))
+
+    def _get_value_from_state(self, name, attr):
+        """Returns value of attribute from another state"""
+        # Check that mapping exists
+        if name in self.StateDict:
+            state = self.StateDict[name]
+        else:
+            raise ValueError('State \'{}\' not found.'.format(name))
+
+        # Check for attribute
+        if hasattr(state, attr):
+            return getattr(state, attr)
+        else:
+            raise AttributeError('State {} does not have attribute {}.'.format(state, attr))
 
     def set_internal_state(self, value):
         # Initialize mod state if not already
@@ -514,7 +543,11 @@ class SetInternalState(TaskState):
         
         # Look up value if needed
         if isinstance(value, str):
-            value = self._get_value(value)
+            value = self._get_value_from_key(value)
+        elif isinstance(value, dict):
+            if len(value) > 1:
+                raise ValueError('Can only set one value.')
+            value = self._get_value_from_state(*[(k, v) for k, v in value.items()][0])
         
         setattr(self.ModState, self.ModAttribute, value)
 
@@ -534,7 +567,11 @@ class SetInternalState(TaskState):
 class PatchState(TaskState):
 
     def __init__(self, label, state_config, io_interface):
-        self._has_reward_state = False # check to see if set in superclass init
+        # Default parameters prior to superclass init
+        self._has_reward_state = False
+        self._increment_size = np.inf
+
+        # Superclass init
         TaskState.__init__(self, label, state_config, io_interface)
 
         # Settings
@@ -542,6 +579,7 @@ class PatchState(TaskState):
         self.NewPatch = True # reset patch on entrance
         self.RewardHarvest = 0.0 # reward harvested in time step
         self.R_harvest = 0.0 # total harvested reward in current patch
+        self.increments = 0 # number of increments corresponding to reward tone steps
         params = state_config['Params']
 
         # Parse parameters
@@ -565,51 +603,89 @@ class PatchState(TaskState):
         if not self._has_reward_state:
             raise SyntaxError('State transition of Reward type is required for PatchState.')
 
+        # Initialize tracking variables
+        self._prev_available_reward = self.available_reward
+
     def add_state_transition(self, state_name, params):
         if params['ConditionType'] == 'Reward':
             #self.next_state[state_name]['ConditionType'] = 'Reward' # added in TaskState
             self.next_state[state_name]['Value'] = params['Value']
             self._has_reward_state = True
+        elif params['ConditionType'] == 'Increment':
+            self.next_state[state_name]['Value'] = params['Value']
+            self._increment_size = params['Value']
+        elif params['ConditionType'] == 'Decrement':
+            self.next_state[state_name]['Value'] = params['Value']
         else:
             raise NotImplementedError('Condition type \'{}\' not implemented for PatchState.'
                                       .format(params['ConditionType']))
 
     def check_state_transition(self, state_name, params):
         if params['ConditionType'] == 'Reward':
-            return (self.Model.available_reward >= self.R_harvest + params['Value'])
+            return (self.available_reward >= params['Value'])
+        elif params['ConditionType'] == 'Increment':
+            return ((self.available_reward // params['Value']) 
+                    > (self._prev_available_reward // params['Value']))
+        elif params['ConditionType'] == 'Decrement':
+            return ((self.available_reward // params['Value']) 
+                    < (self._prev_available_reward // params['Value']))
         else:
-            print(state_name)
             raise NotImplementedError('Condition type \'{}\' not implemented for PatchState.'
                                       .format(params['ConditionType']))
 
     def on_entrance(self, logger=None):
         TaskState.on_entrance(self, logger)
 
+        # Cache previous reward
+        self._prev_available_reward = self.available_reward
+
         # Add reward if harvested
         if self.RewardHarvest > 0.0:
             self.R_harvest += self.RewardHarvest
             self.RewardHarvest = 0.0
 
-        # Reset patch model if entering new patch
         if self.NewPatch:
-            self.Model.reset(self.io_interface.MasterTime)
-            self.NewPatch = False
-            self.R_harvest = 0.0
+            # Reset patch model if entering new patch
+            self.reset()
             if self.render_viewer:
                 update_dict = {'reset': None, 'priority': 1}
                 self._viewer_conn.send_bytes(pickle.dumps(update_dict))
-        elif self.render_viewer:
-            update_dict = {'reward': [self.Model.t, self.Model.available_reward - self.R_harvest],
-                           'priority': 1} # don't skip first data point
-            self._viewer_conn.send_bytes(pickle.dumps(update_dict))
+        else:
+            # Update patch statistics, i.e. if reward is available
+            self.update()
+            if self.render_viewer:
+                update_dict = {'reward': [self.Model.t, self.available_reward],
+                               'priority': 1} # don't skip first data point
+                self._viewer_conn.send_bytes(pickle.dumps(update_dict))
 
     def on_remain(self, logger=None):
         # Update patch statistics, i.e. if reward is available
-        self.Model.update(self.io_interface.MasterTime)
+        self.update()
         if self.render_viewer:
-            update_dict = {'reward': [self.Model.t, self.Model.available_reward - self.R_harvest],
+            update_dict = {'reward': [self.Model.t, self.available_reward],
                            'priority': 0} # can skip intermediate data points
             self._viewer_conn.send_bytes(pickle.dumps(update_dict))
+
+    def reset(self):
+        self.Model.reset(self.io_interface.MasterTime)
+        self.NewPatch = False
+        self.R_harvest = 0.0
+        self.increments = 0
+
+    def update(self):
+        # Update model
+        self.Model.update(self.io_interface.MasterTime)
+
+        # Update increments
+        self.increments = int(self.available_reward // self._increment_size)
+
+    @property
+    def available_reward(self):
+        return self.Model.R - self.R_harvest
+
+    @property
+    def ToneIndex(self):
+        return self.increments - 1
 
     def get_graph_label(self):
         label = '<table border="0"><tr><td>{}</td></tr>'.format(TaskState.get_graph_label(self))
@@ -680,10 +756,6 @@ class PatchModel():
     def set_params(self):
         for name, value in self.param_config.items():
             self.params[name] = self.get_params(value)
-
-    @property
-    def available_reward(self):
-        return self.R
 
     def update(self, time):
         # Subclasses should use self.t instead of time in order to
@@ -967,10 +1039,10 @@ class TaskStateMachine():
                 self.CurrentState.on_entrance(self.socket, logger)
             else:
                 self.CurrentState.on_entrance(logger)
-                
+
             if self.render_viewer:
-                update_dict = {self.CurrentState.label: None, 'priority': 1}
-                self._viewer_conn.send_bytes(pickle.dumps(update_dict))          
+                update_dict = {self.CurrentState.label: None, 'priority': 0}
+                self._viewer_conn.send_bytes(pickle.dumps(update_dict))
         else:
             self.CurrentState.on_remain(logger)
 
