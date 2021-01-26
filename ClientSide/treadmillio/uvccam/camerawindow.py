@@ -2,6 +2,7 @@ import setproctitle, signal
 import multiprocessing
 import queue
 import numpy as np
+import os
 
 def check_shm(shm_var):
     with shm_var.get_lock():
@@ -60,7 +61,14 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
 
             super().__init__(visible=True, resizable=True)
             #super().__init__(width=self.sx, height=self.sy, visible=True)
+
+            # Set aesthetics
             self.set_caption(self.name)
+            if 'Position' in config:
+                assert len(config['Position']) == 2
+                self.set_location(*config['Position'])         
+            d = os.path.dirname(os.path.abspath(__file__))
+            self.set_icon(pyglet.image.load(os.path.join(d, 'rnel.png')))
 
             initial_texture = 128*np.ones((self.sy, self.sx, self.number_of_channels), dtype='uint8')
             self._img = pyglet.image.ImageData(self.sx,self.sy,'BGR',
