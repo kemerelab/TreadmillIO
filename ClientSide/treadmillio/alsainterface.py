@@ -8,6 +8,7 @@ import alsaaudio
 import numpy as np
 from itertools import cycle
 import os
+import glob
 import argparse
 import yaml
 from multiprocessing import Process, Pipe
@@ -157,7 +158,16 @@ class ALSAPlaybackSystem():
         if len(StimuliList) < 1:
             raise(ValueError('Must specify at least one stimulus!'))
 
-        self.data_buf = np.zeros((buffer_size,2,len(StimuliList))) # data buffer for all data
+        # Check for number of bundled sounds
+        self.num_stimuli = 0
+        for stimulus_name, stimulus in StimuliList.items():
+            if stimulus['Type'] == 'Bundle':
+                root_dir = stimulus.get('Directory', './')
+                self.num_stimuli += len(glob.glob(os.path.join(file_root, root_dir, stimulus['Filename'])))
+            else:
+                self.num_stimuli += 1
+
+        self.data_buf = np.zeros((buffer_size,num_channels,self.num_stimuli)) # data buffer for all data
         k = 0
         for stimulus_name, stimulus in StimuliList.items():
             if stimulus_name in ILLEGAL_STIMULUS_NAMES:
@@ -167,9 +177,16 @@ class ALSAPlaybackSystem():
             if stimulus.get('Device', 'Default1') in channel_labels:
                 channel = channel_labels[stimulus.get('Device', 'Default1')]
                 gain = stimulus.get('OffGain', -90.0)
-                filename = os.path.join(file_root, stimulus['Filename'])
-                self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
-                k = k + 1
+                if stimulus['Type'] == 'Bundle':
+                    root_dir = stimulus.get('Directory', './')
+                    filelist = sort_bundled_sounds(glob.glob(os.path.join(file_root, root_dir, stimulus['Filename'])))
+                    for i, filepath in enumerate(filelist):
+                        self.stimuli['-'.join([stimulus_name, str(i)])] = Stimulus(filepath, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
+                        k = k + 1
+                else:
+                    filename = os.path.join(file_root, stimulus['Filename'])
+                    self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
+                    k = k + 1
             else:
                 print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
 
@@ -207,7 +224,7 @@ class ALSAPlaybackSystem():
         self.adevice.dumpinfo()
         print('\n\n')
 
-        self.out_buf = np.zeros((buffer_size,2), dtype=dtype, order='C')
+        self.out_buf = np.zeros((buffer_size,num_channels), dtype=dtype, order='C')
         ######
 
     def __del__(self):
@@ -240,6 +257,8 @@ class ALSAPlaybackSystem():
                         for key, gain in commands.items():
                             if key in self.stimuli:
                                 self.stimuli[key].gain = gain
+                            elif key is not None: # pass if key is None
+                                raise ValueError('Unknown stimulus {}.'.format(key))
                     except:
                         print('Exception: ', commands)
 
@@ -357,3 +376,15 @@ def look_for_and_add_stimulus_defaults(config):
                             stimulus[key][subkey] = sub_config_item
 
     return config['StimuliList']
+
+
+def sort_bundled_sounds(filelist):
+    # Sort sounds by numerical index at beginning. Filenames must follow
+    # the syntax: <#>-filename.wav
+    def sort_key(filepath):
+        return int(filepath.split('/')[-1].split('-')[0])
+
+    try:
+        return sorted(filelist, key=sort_key)
+    except ValueError as error:
+        raise error

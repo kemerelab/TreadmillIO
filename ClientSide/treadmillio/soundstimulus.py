@@ -1,6 +1,7 @@
 import time
 from subprocess import Popen, DEVNULL
 
+import glob
 import os
 import warnings
 import socket
@@ -15,8 +16,11 @@ import traceback as tb
 
 from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
 from .alsainterface import normalize_output_device, normalize_input_device, look_for_and_add_stimulus_defaults
+from .alsainterface import sort_bundled_sounds
 
 import cProfile
+
+import math
 
 def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
@@ -122,6 +126,7 @@ class SoundStimulusController():
         self.BackgroundSounds = {}
         self.Beeps = {}
         self.LocalizedStimuli = {}
+        self.BundledSounds = {}
         self._Stimuli = {} # suggest private to avoid conflict with above
 
         # Add stimuli
@@ -165,6 +170,10 @@ class SoundStimulusController():
             # visualization.add_zone_position(??? , ???, fillcolor=stimulus['Color'])
             new_stimulus = MultilapBackgroundSound(track_length, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
+        elif stimulus['Type'] == 'Bundle':
+            new_stimulus = BundledSound(stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
+            self.BundledSounds[stimulus_name] = new_stimulus
+            new_stimulus.change_gain(new_stimulus.baseline_gain)
         else:
             raise ValueError('Unknown stimulus type \'{}\'.'.format(stimulus['Type']))
 
@@ -463,6 +472,88 @@ class BeepSound(SoundStimulus):
         return True, None
 
 
+class BundledSound(SoundStimulus):
+    
+    def __init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+        SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
+        #self._file_root = stimulus_params.get('Directory', './')
+        #print(os.path.join(self._file_root, stimulus_params['Filename']))
+        #print('unsorted: ', glob.glob(os.path.join(self._file_root, stimulus_params['Filename'])))
+        #self.filelist = sort_bundled_sounds(glob.glob(os.path.join(self._file_root, stimulus_params['Filename'])))
+        #self.num_sounds = len(self.filelist)
+        self.num_sounds = stimulus_params.get('Length', math.inf)
+        self.index = 0
+        #print('filelist: ', self.filelist)
+        #self.current_file = self.filelist[self.current_index]
+        self.subname = self._get_subname(self.index)
+        self.bounds = {} # behavior for handling out of bounds indices
+        self.bounds['Low'] = stimulus_params.get('BoundsLow', 'Error')
+        self.bounds['High'] = stimulus_params.get('BoundsHigh', 'Error')
+        if any([b not in ['Error', 'Soft', 'Wrap', 'Off'] for _, b in self.bounds.items()]):
+            raise ValueError('Unknown bounds handling \'{}\'.'.format(self.bounds))
+
+    def _get_subname(self, index):
+        if (index >= 0) and (index < self.num_sounds):
+            return '-'.join([self.name, str(index)])
+        else:
+            return None
+        
+    def change_gain(self, gain):
+        if gain != self.gain:
+            self.alsa_playback_pipe.send_bytes(pickle.dumps({self.subname: db2lin(gain)}))
+            self.gain = gain
+
+        if self._viewer_conn:
+            update_dict = {self.name: gain, 'priority': 1}
+            self._viewer_conn.send_bytes(pickle.dumps(update_dict))
+
+    def change_gain_raw(self, gain):
+        if gain != self.gain:
+            self.alsa_playback_pipe.send_bytes(pickle.dumps({self.subname: gain}))
+            self.gain = gain
+
+        if self._viewer_conn:
+            update_dict = {self.name: gain, 'priority': 1}
+            self._viewer_conn.send_bytes(pickle.dumps(update_dict))
+
+    def choose_sound(self, index):
+        # Determine index if out of bounds
+        if not isinstance(index, int):
+            raise TypeError('Index must be an instance of int.')
+        elif index < 0:
+            index = self._handle_bounds(index, side='Low')
+        elif index >= self.num_sounds:
+            index = self._handle_bounds(index, side='High')
+
+        # Turn off old sound
+        gain = self.gain # cache current gain first
+        self.change_gain(self.off_gain)
+
+        # Update index
+        self.index = index
+        self.subname = self._get_subname(index)
+
+        # Turn on new sound to current gain
+        self.change_gain(gain)
+
+        print('Playing sound {}'.format(self.index))
+
+    def _handle_bounds(self, index, side='Low'):
+        behavior = self.bounds[side]
+        if behavior == 'Soft':
+            return min(max(index, 0), self.num_sounds - 1) # keep at boundary
+        elif behavior == 'Wrap':
+            return index % self.num_sounds # works for both positive and negative indices
+        elif behavior == 'Off':
+            return index # if subname outside boundary, then no sound plays
+        else:
+            raise ValueError('Index of {} is outside bounds of filelist.'.format(index))
+
+    @classmethod
+    def valid(cls, name, config):
+        return super(BundledSound, cls).valid(name, config)
+
+
 def validate_sound_config(config):
     # What do we want to test:
     #   After we optionally specified defaults, SoundStimuli have all the proper settings
@@ -489,6 +580,8 @@ def validate_sound_config(config):
             valid, error = LocalizedSound.valid(stim_name, stim)
         elif stim['Type'] == 'Beep':
             valid, error = BeepSound.valid(stim_name, stim)
+        elif stim['Type'] == 'Bundle':
+            valid, error = BundledSound.valid(stim_name, stim)
         else:
             raise(ValueError('Sound stimulus {} has an unknown stimulus type {}.'.format(stim_name, stim)))
         if not valid:
@@ -496,4 +589,3 @@ def validate_sound_config(config):
 
         if not stim['Device'] in OutputDevices:
             raise(ValueError("Sound stimulus {} names a device ({}) that is not specified as the channel of a device.".format(stim_name, stim['Device'])))
-

@@ -279,3 +279,24 @@ AuditoryStimuli:
       Type: 'Beep'
       Filename: 'tone_11kHz.wav'
 ```
+
+## Camera Window
+At high resolution (>= 1080p) and frame rate, the multiprocessing queue (and underlying pipe) for the camera window struggles to pickle/unpickle the image data quickly enough to keep up with webcam stream (the write process, which uses raw jpeg data, doesn't seem to have this issue, presumably because serialization of the raw data is trivial). To manage this issue, we can specify a maximum buffer size for the queue. When exceeded, the queue will stop receiving new frames from the send end (`CameraInterface`) until the receive end (`CameraWindow`) has flushed the queue. This leads to some push and pull, periods of normal streaming interrupted by pauses, so there's room for improvement. An example config for a 1080p webcam:
+
+```yaml
+Cameras:
+  Camera1:
+    RecordVideo: True
+    FilenameHeader: 'MouseCam1'
+    Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
+    CameraIndex: 0
+    ResX: 1920 
+    ResY: 1080
+    FrameRate: 30
+    BufferSizeFrames: 30 # maximum frames to buffer before flushing queue
+    #BufferSizeMB: 500 # we could instead specify buffer size by MB
+    Verbose: False
+    CameraParams:
+      Power Line frequency: 2, # 60 Hz
+      Gain: 10
+```

@@ -1,6 +1,7 @@
 import setproctitle, signal
 import multiprocessing
 import cProfile
+import queue
 
 def check_shm(shm_var):
     with shm_var.get_lock():
@@ -72,7 +73,13 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
                     for q in self._queues:
                         if not check_shm(self._terminate_flag):
                             if q.frame_type == 'img':
-                                q.put((frame.img, frame.timestamp))
+                                if q.is_active():
+                                    # Unlike the video write process, we can afford
+                                    # to drop frames for the visualization process.
+                                    try:
+                                        q.put((frame.img, frame.timestamp), block=False)
+                                    except queue.Full:
+                                        continue
                             elif q.frame_type == 'jpeg':
                                 q.put((frame.jpeg_raw, frame.timestamp))
                             else:

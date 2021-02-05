@@ -16,6 +16,7 @@
 
 
 import multiprocessing as mp
+import subprocess as sp
 import pickle
 import numpy as np
 import matplotlib
@@ -24,10 +25,19 @@ import matplotlib.pyplot as plt
 from inspect import signature
 import time
 import networkx as nx
+import re
+import warnings
 
-class FigIDs:
-    StateViewer = 1
-    SoundViewer = 2
+cf_ID = mp.Value('I') # ctypes unsigned int
+
+# NOTE: This is something to come back to if we implement the viewer
+# as a single process with multiple threads, i.e. only one instance
+# of matplotlib, so that different viewer instances can share one
+# figure. For now, each instance must use its own figure.
+#class FigIDs:
+#    StateMachineViewer = 1
+#    SoundViewer = 2
+#    StateViewer = 3
 
 class Viewer:
 
@@ -89,7 +99,17 @@ class Viewer:
         self.fig.canvas.start_event_loop(0.001)
 
     def start(self):
-        pass
+        # Set fig ID to current ID and increment for next figure
+        self.fig_ID = cf_ID.value
+        with cf_ID.get_lock():
+            cf_ID.value += 1
+
+        # Create figure based on current fig ID
+        self.fig, self.ax = plt.subplots(num=self.fig_ID)
+
+        # Position figure on screen
+        x, y, w, h = get_figure_position(self.fig_ID)
+        self.fig.canvas.manager.window.setGeometry(x, y, w, h)
 
     def __del__(self):
         self.running = False
@@ -111,8 +131,6 @@ class SoundStimulusViewer(Viewer):
 
     def start(self):
         Viewer.start(self)
-
-        self.fig, self.ax = plt.subplots()
         
         # Create image for each stimulus
         self.imgs = {}
@@ -162,8 +180,7 @@ class StateMachineViewer(Viewer):
     def start(self):
         Viewer.start(self)
 
-        # Create figure
-        self.fig, self.ax = plt.subplots()
+        # Set figure margins
         self.ax.margins(x=0.25, y=0.25) # some padding for state labels
 
         # Color scheme
@@ -216,12 +233,15 @@ class StateViewer(Viewer):
         Viewer.start(self)
 
         # Grab figure (or create if not yet exists)
-        if FigIDs.StateViewer in plt.get_fignums():
-            self.fig = plt.figure(FigIDs.StateViewer)
-            self.ax = self.fig.axes[0]
-        else:
-            self.fig, self.ax = plt.subplots(num=FigIDs.StateViewer)
-            self.ax.set_title('Current State')
+        #if FigIDs.StateViewer in plt.get_fignums():
+        #    self.fig = plt.figure(FigIDs.StateViewer)
+        #    self.ax = self.fig.axes[0]
+        #else:
+        #    self.fig, self.ax = plt.subplots(num=FigIDs.StateViewer)
+        #    self.ax.set_title('Current State')
+
+        # Set title
+        self.ax.set_title('Current State')
 
 
 class PatchViewer(StateViewer):
@@ -281,3 +301,52 @@ def launch_viewer(viewer_type, *args, **kwargs):
     p_viewer.start()
     return parent_conn, p_viewer
     #return q, p_viewer
+
+def get_figure_position(fig_ID, cols=4, rows=2, screen_rect=None):
+    # TODO: Place this in config file. Another option is to have local
+    # Viewer configurations, where each Viewer object has its own desired
+    # width and height. Then shared memory could track the current (x,y)
+    # figure position and whether the next figure would fit there.
+    screen_rect = (0, 0, 960, 1080)
+    cols = 2
+    rows = 2
+
+    # Extra space between figures
+    dx = 100
+    dy = 100
+
+    # Get boundaries of rectangle to position figures
+    if screen_rect is not None:
+        # Use boundaries if provided
+        sx = screen_rect[0]
+        sy = screen_rect[1]
+        width = screen_rect[2]
+        height = screen_rect[3]
+    else:
+        # Use whole screen otherwise
+        p = sp.Popen(['xrandr'], stdout=sp.PIPE)
+        p.wait()
+        out, err = p.communicate()
+        match = re.search('current [0-9]+[\s]?x[\s]?[0-9]+', out.decode('utf-8'))
+        if match is not None:
+            res = [int(s) for s in match.group()[8:].split('x')]
+        else:
+            warnings.warn('Unable to find screen resolution. Defaulting to 1920 x 1080...',
+                        RuntimeWarning)
+            res = [1920, 1080]
+
+        sx = 0
+        sy = 0
+        width = res[0]
+        height = res[1]
+
+    # Calculate figure size
+    w = (width - dx*(cols-1)) / cols
+    h = (height - dy*(rows-1)) / rows
+
+    # Calculate figure position
+    x = (fig_ID % cols) * (w + dx) + sx
+    y = (fig_ID // cols) * (h + dy) + sy
+
+    return x, y, w, h
+
