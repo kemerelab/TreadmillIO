@@ -536,8 +536,6 @@ class BundledSound(SoundStimulus):
         # Turn on new sound to current gain
         self.change_gain(gain)
 
-        print('Playing sound {}'.format(self.index))
-
     def _handle_bounds(self, index, side='Low'):
         behavior = self.bounds[side]
         if behavior == 'Soft':
