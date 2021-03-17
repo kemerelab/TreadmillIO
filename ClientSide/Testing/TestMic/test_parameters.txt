@@ -1,0 +1,7 @@
+Parameters for mic-circuit test.
+
+Test # |  R1  |  R2  |  R3  |  R4  |  C1  
+1      | 330  | 15k  | 3.3k | 330  | 100nF
+2      | 330  | 15k  | 3.3k | 330  | 1nF
+3      | 330  | 15k  | 3.3k | 330  | 10pF
+4      | 330  | 15k  | 10k  | 330  | 100nF

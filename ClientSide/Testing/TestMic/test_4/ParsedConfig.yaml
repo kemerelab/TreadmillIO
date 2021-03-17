@@ -1,0 +1,466 @@
+AuditoryStimuli:
+    AudioFileDirectory: /home/mcginley-lab/Code/TreadmillIO/ClientSide/Sounds/96kHz
+    DeviceList:
+        Camera1Microphone:
+            BufferSize: 1024
+            DType: int16
+            Device: hw:CARD=C920,DEV=0
+            FilenameHeader: ''
+            HWDevice: hw:CARD=C920,DEV=0
+            NChannels: 2
+            Record: true
+            SamplingRate: 16000
+            Type: Input
+        Camera2Microphone:
+            BufferSize: 1024
+            DType: int16
+            Device: hw:CARD=C920_1,DEV=0
+            FilenameHeader: ''
+            HWDevice: hw:CARD=C920_1,DEV=0
+            NChannels: 2
+            Record: true
+            SamplingRate: 16000
+            Type: Input
+        Output1:
+            BufferSize: 1024
+            ChannelLabels:
+                Speaker1: 0
+                Speaker2: 1
+            DType: int16
+            Device: hw:CARD=SoundCard,DEV=0
+            HWDevice: hw:CARD=SoundCard,DEV=0
+            NChannels: 2
+            NPeriods: 2
+            SamplingRate: 96000
+            Type: Output
+        StimuliPlayback:
+            BufferSize: 1024
+            DType: int16
+            Device: hw:CARD=SoundCard,DEV=0
+            FilenameHeader: ''
+            HWDevice: hw:CARD=SoundCard,DEV=0
+            NChannels: 2
+            Record: true
+            SamplingRate: 96000
+            Type: Input
+    StimuliList:
+        InPatchSound1:
+            BaselineGain: 0.0
+            Color: pink
+            Device: Speaker1
+            Filename: tone_cloud.wav
+            Name: InPatchSound1
+            Type: Background
+        InPatchSound2:
+            BaselineGain: 0.0
+            Color: pink
+            Device: Speaker2
+            Filename: tone_cloud.wav
+            Name: InPatchSound2
+            Type: Background
+        InterpatchSound1:
+            BaselineGain: 0.0
+            Color: pink
+            Device: Speaker1
+            Filename: pink_noise.wav
+            Name: InterpatchSound1
+            Type: Background
+        InterpatchSound2:
+            BaselineGain: 0.0
+            Color: pink
+            Device: Speaker2
+            Filename: pink_noise.wav
+            Name: InterpatchSound2
+            Type: Background
+        RewardSound1:
+            BaselineGain: 0.0
+            BoundsHigh: Soft
+            BoundsLow: 'Off'
+            Device: Speaker1
+            Directory: ./reward_tones/
+            Filename: '*tone_*.wav'
+            Length: 8
+            Name: RewardSound1
+            OffGain: -90.0
+            Type: Bundle
+        RewardSound2:
+            BaselineGain: 0.0
+            BoundsHigh: Soft
+            BoundsLow: 'Off'
+            Device: Speaker2
+            Directory: ./reward_tones/
+            Filename: '*tone_*.wav'
+            Length: 8
+            Name: RewardSound2
+            OffGain: -90.0
+            Type: Bundle
+    Viewer: true
+Cameras:
+    Camera1:
+        CameraIndex: 0
+        CameraParams:
+            Gain: 10
+            Power Line frequency: 2,
+        Compress: false
+        FilenameHeader: MouseCam1
+        FrameRate: 30
+        Position:
+        - 960
+        - 0
+        RecordVideo: true
+        ResX: 1280
+        ResY: 720
+        Verbose: false
+    Camera2:
+        CameraIndex: 1
+        CameraParams:
+            Gain: 10
+            Power Line frequency: 2,
+        Compress: false
+        FilenameHeader: MouseCam2
+        FrameRate: 30
+        Position:
+        - 960
+        - 480
+        RecordVideo: true
+        ResX: 1280
+        ResY: 720
+        Verbose: false
+GPIO:
+    Lick1:
+        Number: 5
+        Power: true
+        Type: INPUT
+    Lick2:
+        Number: 6
+        Power: true
+        Type: INPUT
+    Poke1:
+        Number: 3
+        Power: true
+        Type: INPUT
+    Poke2:
+        Number: 4
+        Power: true
+        Type: INPUT
+    Reward1:
+        Mirror: true
+        Number: 1
+        Power: true
+        Type: Output
+    Reward2:
+        Mirror: true
+        Number: 2
+        Power: true
+        Type: Output
+Info:
+    MouseID: ''
+    Note: ''
+    Session: ''
+    TaskType: Poisson Drip
+Maze:
+    Type: StateMachine
+Preferences:
+    EnableSound: true
+    HeartBeat: 1000
+    LogCommands: true
+    RandomSeed: 345
+StateMachine:
+    States:
+        InPatch1-Available:
+            NextState:
+                InPatch1-Leaving:
+                    ConditionType: GPIO
+                    Pin: 3
+                    Priority: 2
+                    Value: false
+                InPatch1-Reward:
+                    ConditionType: GPIO
+                    Pin: 5
+                    Priority: 1
+                    Value: true
+                InPatch1-Waiting:
+                    ConditionType: ElapsedTime
+                    Duration: 10
+                    Priority: 0
+            Type: Base
+        InPatch1-DecreaseFrequency:
+            NextState: InPatch1-RewardSound
+            Params:
+                InternalState: Index
+                State: InPatch1-RewardSound
+                Value:
+                    InPatch1-Waiting: ToneIndex
+            Type: SetInternalState
+        InPatch1-Enter:
+            NextState: InPatch1-ResetPatch
+            Params:
+                InPatchSound1: 'On'
+                InterpatchSound1: 'Off'
+            Type: SetSoundState
+        InPatch1-IncreaseFrequency:
+            NextState: InPatch1-RewardSound
+            Params:
+                InternalState: Index
+                State: InPatch1-RewardSound
+                Value:
+                    InPatch1-Waiting: ToneIndex
+            Type: SetInternalState
+        InPatch1-Leaving:
+            NextState:
+                InPatch1-Waiting:
+                    ConditionType: GPIO
+                    Pin: 3
+                    Priority: 1
+                    Value: true
+                Interpatch1:
+                    ConditionType: ElapsedTime
+                    Duration: 500
+                    Priority: 0
+            Type: Base
+        InPatch1-PumpOffDelay:
+            NextState: InPatch1-Waiting
+            Params:
+                Duration: Fixed
+                Value: 100
+            Type: Delay
+        InPatch1-PumpOnDelay:
+            NextState: InPatch1-UpdateReward
+            Params:
+                Duration: Fixed
+                Value: 100
+            Type: Delay
+        InPatch1-ResetPatch:
+            NextState: InPatch1-Waiting
+            Params:
+                InternalState: NewPatch
+                State: InPatch1-Waiting
+                Value: true
+            Type: SetInternalState
+        InPatch1-Reward:
+            NextState: InPatch1-PumpOnDelay
+            Params:
+                DispensePin: Reward1
+                PumpRunTime: 100
+            Type: Reward
+        InPatch1-RewardSound:
+            NextState: InPatch1-Waiting
+            Params:
+                RewardSound1: 'On'
+            Type: SetSoundState
+        InPatch1-UpdateReward:
+            NextState: InPatch1-PumpOffDelay
+            Params:
+                InternalState: RewardHarvest
+                State: InPatch1-Waiting
+                Value: 2.0
+            Type: SetInternalState
+        InPatch1-Waiting:
+            NextState:
+                InPatch1-Available:
+                    ConditionType: Reward
+                    Priority: 1
+                    Value: 2.0
+                InPatch1-DecreaseFrequency:
+                    ConditionType: Decrement
+                    Priority: 3
+                    Value: 1.0
+                InPatch1-IncreaseFrequency:
+                    ConditionType: Increment
+                    Priority: 2
+                    Value: 2.0
+                InPatch1-Leaving:
+                    ConditionType: GPIO
+                    Pin: 3
+                    Priority: 4
+                    Value: false
+            Params:
+                ModelParams:
+                    V0: 0.5
+                    lambda0:
+                        Distribution: LogUniform
+                        High: 2.0
+                        Low: 1.0
+                    tau:
+                        Distribution: Uniform
+                        High: 15.0
+                        Low: 10.0
+                ModelType: Poisson
+                SwitchRate: 0.1
+            Type: Patch
+            Viewer: true
+        InPatch2-Available:
+            NextState:
+                InPatch2-Leaving:
+                    ConditionType: GPIO
+                    Pin: 4
+                    Priority: 2
+                    Value: false
+                InPatch2-Reward:
+                    ConditionType: GPIO
+                    Pin: 6
+                    Priority: 1
+                    Value: true
+                InPatch2-Waiting:
+                    ConditionType: ElapsedTime
+                    Duration: 25
+                    Priority: 0
+            Type: Base
+        InPatch2-DecreaseFrequency:
+            NextState: InPatch2-RewardSound
+            Params:
+                InternalState: Index
+                State: InPatch2-RewardSound
+                Value:
+                    InPatch2-Waiting: ToneIndex
+            Type: SetInternalState
+        InPatch2-Enter:
+            NextState: InPatch2-ResetPatch
+            Params:
+                InPatchSound2: 'On'
+                InterpatchSound2: 'Off'
+            Type: SetSoundState
+        InPatch2-IncreaseFrequency:
+            NextState: InPatch2-RewardSound
+            Params:
+                InternalState: Index
+                State: InPatch2-RewardSound
+                Value:
+                    InPatch2-Waiting: ToneIndex
+            Type: SetInternalState
+        InPatch2-Leaving:
+            NextState:
+                InPatch2-Waiting:
+                    ConditionType: GPIO
+                    Pin: 4
+                    Priority: 1
+                    Value: true
+                Interpatch2:
+                    ConditionType: ElapsedTime
+                    Duration: 500
+                    Priority: 0
+            Type: Base
+        InPatch2-PumpOffDelay:
+            NextState: InPatch2-Waiting
+            Params:
+                Duration: Fixed
+                Value: 100
+            Type: Delay
+        InPatch2-PumpOnDelay:
+            NextState: InPatch2-UpdateReward
+            Params:
+                Duration: Fixed
+                Value: 100
+            Type: Delay
+        InPatch2-ResetPatch:
+            NextState: InPatch2-Waiting
+            Params:
+                InternalState: NewPatch
+                State: InPatch2-Waiting
+                Value: true
+            Type: SetInternalState
+        InPatch2-Reward:
+            NextState: InPatch2-PumpOnDelay
+            Params:
+                DispensePin: Reward2
+                PumpRunTime: 100
+            Type: Reward
+        InPatch2-RewardSound:
+            NextState: InPatch2-Waiting
+            Params:
+                RewardSound2: 'On'
+            Type: SetSoundState
+        InPatch2-UpdateReward:
+            NextState: InPatch2-PumpOffDelay
+            Params:
+                InternalState: RewardHarvest
+                State: InPatch2-Waiting
+                Value: 2.0
+            Type: SetInternalState
+        InPatch2-Waiting:
+            NextState:
+                InPatch2-Available:
+                    ConditionType: Reward
+                    Priority: 1
+                    Value: 2.0
+                InPatch2-DecreaseFrequency:
+                    ConditionType: Decrement
+                    Priority: 3
+                    Value: 1.0
+                InPatch2-IncreaseFrequency:
+                    ConditionType: Increment
+                    Priority: 2
+                    Value: 1.0
+                InPatch2-Leaving:
+                    ConditionType: GPIO
+                    Pin: 4
+                    Priority: 4
+                    Value: false
+            Params:
+                ModelParams:
+                    V0: 0.5
+                    lambda0:
+                        Distribution: LogUniform
+                        High: 2.0
+                        Low: 1.0
+                    tau:
+                        Distribution: Uniform
+                        High: 15.0
+                        Low: 10.0
+                ModelType: Poisson
+                SwitchRate: 0.1
+            Type: Patch
+            Viewer: true
+        InitialPatch1:
+            NextState: InPatch1-ResetPatch
+            Params:
+                InPatchSound2: 'Off'
+            Type: SetSoundState
+        InitialPatch2:
+            NextState: InPatch2-ResetPatch
+            Params:
+                InPatchSound1: 'Off'
+            Type: SetSoundState
+        InitialState:
+            FirstState: true
+            NextState:
+                InitialPatch1:
+                    ConditionType: GPIO
+                    Pin: 3
+                    Value: true
+                InitialPatch2:
+                    ConditionType: GPIO
+                    Pin: 4
+                    Value: true
+            Params:
+                InPatchSound1: 'On'
+                InPatchSound2: 'On'
+                InterpatchSound1: 'Off'
+                InterpatchSound2: 'Off'
+                RewardSound1: 'Off'
+                RewardSound2: 'Off'
+            Type: SetSoundState
+        Interpatch1:
+            NextState:
+                InPatch2-Enter:
+                    ConditionType: GPIO
+                    Pin: 4
+                    Priority: 1
+                    Value: true
+            Params:
+                InPatchSound1: 'Off'
+                InterpatchSound2: 'On'
+                RewardSound1: 'Off'
+            Type: SetSoundState
+        Interpatch2:
+            NextState:
+                InPatch1-Enter:
+                    ConditionType: GPIO
+                    Pin: 3
+                    Value: true
+            Params:
+                InPatchSound2: 'Off'
+                InterpatchSound1: 'On'
+                RewardSound2: 'Off'
+            Type: SetSoundState
+    Viewer: true
