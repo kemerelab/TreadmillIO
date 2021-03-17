@@ -10,13 +10,19 @@ parser.add_argument('-P', '--serial-port', default='/dev/ttyACM0',
 parser.add_argument('-p', '--gpio', default=1, type=int,
                     help='GPIO number for syringe pump.')
 parser.add_argument('-n', '--num-pulses', default=100, type=int,
-                    help='Number of pulses to send.')                  
+                    help='Number of pulses to send.')
+parser.add_argument('-t', '--pulse-duration', default=200, type=int,
+                    help='Pulse duration in milliseconds.')                
 parser.add_argument('--version', default=2, type=int, choices=[1, 2],
                     help='Demo version to use.')
 args = parser.parse_args()
 
+# Check parameters
 if args.version not in [1, 2]:
     raise ValueError('Unknown version {}.'.format(args.version))
+if args.pulse_duration < 125:
+    raise UserWarning('Syringe pump may not recognize logic level changes for pulses \
+                       near or less than 100 ms.')
 
 # Create serial interface
 Interface = serial.Serial(args.serial_port,
@@ -37,7 +43,6 @@ elif (args.version == 2):
     MessageLen = 17
     startChar = b'F'
 x = Interface.read(MessageLen*(K+1))
-print(len(x))
 assert(len(x) == MessageLen*(K+1))
 # print(x) # useful for debugging....
 # Find offset in this set
@@ -82,7 +87,7 @@ for i in range(args.num_pulses):
     msg += args.gpio.to_bytes(1, byteorder='big',signed=True)
     msg += int(1).to_bytes(1, byteorder='big',signed=True)
     n = Interface.write(msg)
-    time.sleep(0.2)
+    time.sleep(args.pulse_duration/1000)
 
     # Pulse off
     msg = b'\xA9'
@@ -90,4 +95,4 @@ for i in range(args.num_pulses):
     msg += args.gpio.to_bytes(1, byteorder='big',signed=True)
     msg += int(0).to_bytes(1, byteorder='big',signed=True)
     n = Interface.write(msg)
-    time.sleep(0.2)
+    time.sleep(args.pulse_duration/1000)
