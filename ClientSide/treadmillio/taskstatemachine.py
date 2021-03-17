@@ -83,6 +83,10 @@ class TaskState:
                     if params['ConditionType'] == 'ElapsedTime':
                         self.next_state[state_name]['Duration'] = params['Duration'] # this will error if its not specified
                         self.next_state[state_name]['TransitionTime'] = -1
+                    elif params['ConditionType'] == 'Delay':
+                        label = 'Delay ({} to {})'.format(self.label, state_name)
+                        config = {'Params': params, 'NextState': 'Default'}
+                        self.next_state[state_name]['State'] = DelayState(label, config, self.io_interface)
                     elif params['ConditionType'] == 'GPIO':
                         self.next_state[state_name]['Pin'] = params['Pin'] # this will error if its not specified
                         self.next_state[state_name]['Value'] = params['Value'] # this will error if its not specified
@@ -118,6 +122,8 @@ class TaskState:
                         next_state.append( (state_name, 'Default') )
                     elif condition['ConditionType'] == 'ElapsedTime':
                         next_state.append( (state_name, 'Elapsed Time ({} ms)'.format(condition['Duration'])))
+                    elif condition['ConditionType'] == 'Delay':
+                        next_state.append(  (state_name, 'Delay ({})'.format(condition['State'].label)) )
                     elif condition['ConditionType'] == 'GPIO':
                         next_state.append( (state_name, 'GPIO {} = {}'.format(condition['Pin'], condition['Value'])))
                     else:
@@ -132,6 +138,7 @@ class TaskState:
             priority = []
             for state_name, condition in self.next_state.items():
                 if  ((condition['ConditionType'] == 'ElapsedTime') and (time > condition['TransitionTime'])) or \
+                    ((condition['ConditionType'] == 'Delay') and (condition['State'].get_next_state())) or \
                     ((condition['ConditionType'] == 'GPIO') and \
                         (self.io_interface.read_pin(condition['Pin']) == condition['Value'])):
                     # (note that we don't even check for "None")
@@ -140,7 +147,7 @@ class TaskState:
                 elif condition['ConditionType'] == 'None': # add state transition if unconditional
                     next_state.append(state_name)
                     priority.append(condition['Priority'])
-                elif condition['ConditionType'] not in ['None', 'ElapsedTime', 'GPIO']:
+                elif condition['ConditionType'] not in ['None', 'ElapsedTime', 'Delay', 'GPIO']:
                     if self.check_state_transition(state_name, condition): # check custom state transition
                         next_state.append(state_name)
                         priority.append(condition['Priority'])
@@ -160,7 +167,9 @@ class TaskState:
             for state_name, condition in self.next_state.items():
                 if (condition['ConditionType'] == 'ElapsedTime'):
                     self.next_state[state_name]['TransitionTime'] = condition['Duration'] + self.io_interface.MasterTime
-                    break # there's only supposed to be one TransitionTime state transition, so we can break if we find it
+                    #break # there's only supposed to be one TransitionTime state transition, so we can break if we find it
+                elif (condition['ConditionType'] == 'Delay'):
+                    self.next_state[state_name]['State'].on_entrance(logger=logger)
         else:
             pass
 
@@ -215,6 +224,14 @@ class DelayState(TaskState):
             delays += self.delay_min
             delays[delays > self.delay_max] = self.delay_max
             self.delays = np.rint(delays).astype('int').tolist()
+
+        elif (Params['Duration'] == 'Uniform'):
+            self.delay_min = Params['Min']
+            self.delay_max = Params['Max']
+
+            delays = np.random.uniform(self.delay_min, self.delay_max, size=(50,))
+            self.delays = np.rint(delays).astype('int').tolist()
+
         elif (Params['Duration'] == 'Fixed'):
             self.delays = [Params['Value']]
         else:
@@ -250,6 +267,10 @@ class DelayState(TaskState):
             return label + '<tr><td>Exponential Delay: <br/>' \
                 '&#955;={} ms (min: {}, max: {}) </td></tr></table>'.format(
                         self.rate, self.delay_min, self.delay_max)
+        elif self.delay_type == 'Uniform':
+            return label + '<tr><td>Uniform Delay: <br/>' \
+                '&#955;= min: {} ms, max: {} ms </td></tr></table>'.format(
+                        self.delay_min, self.delay_max)
         else:
             return TaskState.get_graph_label(self)
         
