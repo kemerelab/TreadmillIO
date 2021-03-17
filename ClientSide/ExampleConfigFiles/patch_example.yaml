@@ -69,12 +69,12 @@ StateMachine:
       Type: 'SetSoundState'
       Params:
         InPatchSound2: 'Off'
-      NextState: 'InPatch1-ResetPatch'
+      NextState: 'InPatch1-Enter'
     InitialPatch2:
       Type: 'SetSoundState'
       Params:
         InPatchSound1: 'Off'
-      NextState: 'InPatch2-ResetPatch'
+      NextState: 'InPatch2-Enter'
       
     Interpatch1: # going from reward zone 1 to 2
       Type: 'SetSoundState'
@@ -105,16 +105,15 @@ StateMachine:
       Type: 'Patch'
       Viewer: True
       Params:
-        ModelType: 'Poisson' 
+        ModelType: 'Exponential' # or stochastic models like Poisson, etc. 
         ModelParams: # list of params for specific model type
-          tau: # decay rate for lambda (example of uniform dist)
-            Distribution: 'Uniform'
+          tau: # time constant
+            Distribution: 'Uniform'  
             Low: 10.0
             High: 15.0
-          V0: 0.5 # drip size (example of fixed value)
-          lambda0: # initial rate for Poisson process (example of log-uniform dist)
-            Distribution: 'LogUniform'
-            Low: 1.0
+          r0: # initial decay rate
+            Distribution: 'Uniform'
+            Low: 0.5
             High: 2.0
         SwitchRate: 0.1
       NextState: 
@@ -140,7 +139,7 @@ StateMachine:
       NextState:
         InPatch2-Waiting: # default to waiting
           ConditionType: 'ElapsedTime'
-          Duration: 25
+          Duration: 10
           Priority: 0
         InPatch2-Reward: # dispense reward if lick 
           ConditionType: 'GPIO'
@@ -374,15 +373,10 @@ AuditoryStimuli:
       Device: 'Speaker2'
       Color: 'pink' # Matplotlib color name used for visualization system
     RewardSound1:
-      Type: 'Bundle'
-      Length: 8
-      BoundsLow: 'Off'
-      BoundsHigh: 'Soft'
-      Directory: './reward_tones/'
-      Filename: '*tone_*.wav'
+      Type: 'Background'
+      Filename: 'reward_tones/3-tone_7kHz.wav'
       BaselineGain: 0.0
-      OffGain: -90.0
-      Device: 'Speaker1' # or single device, or list of devices
+      Device: 'Speaker1'
     RewardSound2:
       Type: 'Bundle'
       Length: 8
@@ -400,7 +394,6 @@ AuditoryStimuli:
       BufferSize: 1024
       NPeriods: 2
       NChannels: 2
-      SamplingRate: 96000
       ChannelLabels:
         Speaker1: 0
         Speaker2: 1

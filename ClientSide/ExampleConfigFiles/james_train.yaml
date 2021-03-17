@@ -1,11 +1,11 @@
 Info: # "Info" configuration options can be overridden by command line options
-  MouseID: '' # Used to name saved data file
-  Note: '' # Added in a block at the start of saved data file
-  Session: '' # This is added to default (date and time)
-  TaskType: Poisson Drip
+  MouseID: 'W2314,W2315' # Used to name saved data file
+  Note: 'Training-OneSite' # Added in a block at the start of saved data file
+  Session: 1 # This is added to default (date and time)
+  TaskType: 'Training, One Site, Random Intervals'
 
 Preferences:
-  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  HeartBeat: 10000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
@@ -46,112 +46,73 @@ Maze:
 StateMachine:
   Viewer: True
   States:
-    InitialState: # either patch available
+    NoPatch: # neither patch active
       FirstState: True
       Type: 'SetSoundState'
       Params:
-        InterpatchSound1: 'Off'
-        InPatchSound1: 'On'
-        RewardSound1: 'Off'
-        InterpatchSound2: 'Off'
-        InPatchSound2: 'On'
-        RewardSound2: 'Off'
-      NextState:
-        InitialPatch1:
-          ConditionType: 'GPIO'
-          Pin: 3 #'Poke1'
-          Value: True
-        InitialPatch2:
-          ConditionType: 'GPIO'
-          Pin: 4 #'Poke2'
-          Value: True
-    InitialPatch1:
-      Type: 'SetSoundState'
-      Params:
-        InPatchSound2: 'Off'
-      NextState: 'InPatch1-ResetPatch'
-    InitialPatch2:
-      Type: 'SetSoundState'
-      Params:
-        InPatchSound1: 'Off'
-      NextState: 'InPatch2-ResetPatch'
-      
-    Interpatch1: # going from reward zone 1 to 2
-      Type: 'SetSoundState'
-      Params: # allow single value or list format; not sure if this is best syntax
+        InterpatchSound1: 'On'
         InPatchSound1: 'Off'
         RewardSound1: 'Off'
         InterpatchSound2: 'On'
-      NextState: 
+        InPatchSound2: 'Off'
+        RewardSound2: 'Off'
+      NextState:
+        InPatch1-Enter:
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: True
         InPatch2-Enter:
           ConditionType: 'GPIO'
           Pin: 4 #'Poke2'
           Value: True
-          Priority: 1
-    InPatch2-Enter: # turn off InterpatchSound at Speaker1
+
+    Interpatch1: # set patch 1 inactive
+      Type: 'SetSoundState'
+      Params: # allow single value or list format; not sure if this is best syntax
+        InPatchSound1: 'Off'
+        RewardSound1: 'Off'
+        InterpatchSound1: 'On'
+      NextState:
+        InPatch1-Enter:
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: True
+        InPatch2-Enter:
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: True
+    InPatch2-Enter: # patch 2 active
       Type: 'SetSoundState'
       Params:
         InterpatchSound2: 'Off'
         InPatchSound2: 'On'
-      NextState: 'InPatch2-ResetPatch'
-    InPatch2-ResetPatch: # reset clock for patch
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch2-Waiting'
-        InternalState: 'NewPatch'
-        Value: True # will call reset function 
+        RewardSound2: 'Off'
       NextState: 'InPatch2-Waiting'
     InPatch2-Waiting: # reward zone 2
-      Type: 'Patch'
-      Viewer: True
-      Params:
-        ModelType: 'Poisson' 
-        ModelParams: # list of params for specific model type
-          tau: # decay rate for lambda (example of uniform dist)
-            Distribution: 'Uniform'
-            Low: 10.0
-            High: 15.0
-          V0: 0.5 # drip size (example of fixed value)
-          lambda0: # initial rate for Poisson process (example of log-uniform dist)
-            Distribution: 'LogUniform'
-            Low: 1.0
-            High: 2.0
-        SwitchRate: 0.1
-      NextState: 
-        InPatch2-Available: # reward available
-          ConditionType: 'Reward' # require all patches to have this
-          Value: 2.0 # threshold size of available reward
-          Priority: 1
-        InPatch2-IncreaseFrequency: # incremental filling
-          ConditionType: 'Increment'
-          Value: 1.0
-          Priority: 2
-        InPatch2-DecreaseFrequency: # reward harvested
-          ConditionType: 'Decrement'
-          Value: 1.0
-          Priority: 3
-        InPatch2-Leaving: # leave patch
-          ConditionType: 'GPIO'
-          Pin: 4 #'Poke2'
-          Value: False
-          Priority: 4
-    InPatch2-Available: # check for lick if reward available
       Type: 'Base'
       NextState:
-        InPatch2-Waiting: # default to waiting
-          ConditionType: 'ElapsedTime'
-          Duration: 25
-          Priority: 0
-        InPatch2-Reward: # dispense reward if lick 
-          ConditionType: 'GPIO'
-          Pin: 6 #'Lick2'
-          Value: True
+        InPatch2-RewardSound: # dispense reward after random delay
+          ConditionType: 'Delay'
+          Duration: 'Exponential'
+          Rate: 2000
+          Min: 250
+          Max: 4000
           Priority: 1
         InPatch2-Leaving: # leave patch
           ConditionType: 'GPIO'
           Pin: 4 #'Poke2'
           Value: False
           Priority: 2
+        InPatch12-Enter: # patch 1 also poked
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: True
+          Priority: 3
+    InPatch2-RewardSound: # play reward sound
+      Type: 'SetSoundState'
+      Params:
+        RewardSound2: 'On'
+      NextState: 'InPatch2-Reward'
     InPatch2-Reward: # dispense reward
       Type: 'Reward'
       Params:
@@ -163,41 +124,13 @@ StateMachine:
       Params:
         Duration: 'Fixed'
         Value: 100
-      NextState: 'InPatch2-UpdateReward'
-    InPatch2-UpdateReward: # update total reward
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch2-Waiting'
-        InternalState: 'RewardHarvest'
-        Value: 2.0
       NextState: 'InPatch2-PumpOffDelay'
-    InPatch2-PumpOffDelay: # pump needs 100 ms to recognize logic level change
+    InPatch2-PumpOffDelay: # extra time for reward sound
       Type: 'Delay'
       Params:
         Duration: 'Fixed'
-        Value: 100
-      NextState: 'InPatch2-Waiting'
-    InPatch2-IncreaseFrequency: # update reward frequency
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch2-RewardSound'
-        InternalState: 'Index'
-        Value:
-          InPatch2-Waiting: 'ToneIndex'
-      NextState: 'InPatch2-RewardSound'
-    InPatch2-DecreaseFrequency: # update reward frequency
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch2-RewardSound'
-        InternalState: 'Index'
-        Value:
-          InPatch2-Waiting: 'ToneIndex'
-      NextState: 'InPatch2-RewardSound'
-    InPatch2-RewardSound: # play updated reward sound
-      Type: 'SetSoundState'
-      Params:
-        RewardSound2: 'On'
-      NextState: 'InPatch2-Waiting'
+        Value: 400
+      NextState: 'InPatch2-Enter'
     InPatch2-Leaving: # smoothes poke sensor for leaving decisions
       Type: 'Base'
       NextState:
@@ -216,76 +149,48 @@ StateMachine:
       Params: # allow single value or list format; not sure if this is best syntax
         InPatchSound2: 'Off'
         RewardSound2: 'Off'
-        InterpatchSound1: 'On'
+        InterpatchSound2: 'On'
       NextState: 
         InPatch1-Enter:
           ConditionType: 'GPIO'
           Pin: 3 #'Poke1'
           Value: True
-    InPatch1-Enter: # turn off InterpatchSound at Speaker1
+        InPatch2-Enter:
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: True
+    InPatch1-Enter: # patch 1 active
       Type: 'SetSoundState'
       Params:
         InterpatchSound1: 'Off'
         InPatchSound1: 'On'
-      NextState: 'InPatch1-ResetPatch'
-    InPatch1-ResetPatch: # reset clock for patch
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch1-Waiting'
-        InternalState: 'NewPatch'
-        Value: True # will call reset function 
+        RewardSound1: 'Off'
       NextState: 'InPatch1-Waiting'
     InPatch1-Waiting: # reward zone 1
-      Type: 'Patch'
-      Viewer: True
-      Params:
-        ModelType: 'Poisson' 
-        ModelParams: # list of params for specific model type
-          tau: # decay rate for lambda (example of uniform dist)
-            Distribution: 'Uniform'
-            Low: 10.0
-            High: 15.0
-          V0: 0.5 # drip size (example of fixed value)
-          lambda0: # initial rate for Poisson process (example of log-uniform dist)
-            Distribution: 'LogUniform'
-            Low: 1.0
-            High: 2.0
-        SwitchRate: 0.1
-      NextState: 
-        InPatch1-Available: # reward available
-          ConditionType: 'Reward' # require all patches to have this
-          Value: 2.0 # threshold size of available reward
-          Priority: 1
-        InPatch1-IncreaseFrequency: # incremental filling
-          ConditionType: 'Increment'
-          Value: 2.0
-          Priority: 2
-        InPatch1-DecreaseFrequency: # reward harvested
-          ConditionType: 'Decrement'
-          Value: 1.0
-          Priority: 3
-        InPatch1-Leaving: # leave patch
-          ConditionType: 'GPIO'
-          Pin: 3 #'Poke1'
-          Value: False
-          Priority: 4
-    InPatch1-Available: # play reward sound when reward available
       Type: 'Base'
       NextState:
-        InPatch1-Waiting: # default to waiting
-          ConditionType: 'ElapsedTime'
-          Duration: 10
-          Priority: 0
-        InPatch1-Reward: # dispense reward if lick
-          ConditionType: 'GPIO'
-          Pin: 5 #'Lick1'
-          Value: True
+        InPatch1-RewardSound: # dispense reward after random delay
+          ConditionType: 'Delay'
+          Duration: 'Exponential'
+          Rate: 2000
+          Min: 250
+          Max: 4000
           Priority: 1
         InPatch1-Leaving: # leave patch
           ConditionType: 'GPIO'
           Pin: 3 #'Poke1'
           Value: False
           Priority: 2
+        InPatch12-Enter: # patch 2 also poked
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: True
+          Priority: 3
+    InPatch1-RewardSound: # play reward sound
+      Type: 'SetSoundState'
+      Params:
+        RewardSound1: 'On'
+      NextState: 'InPatch1-Reward'
     InPatch1-Reward: # dispense reward
       Type: 'Reward'
       Params:
@@ -297,41 +202,13 @@ StateMachine:
       Params:
         Duration: 'Fixed'
         Value: 100
-      NextState: 'InPatch1-UpdateReward'
-    InPatch1-UpdateReward: # update total reward
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch1-Waiting'
-        InternalState: 'RewardHarvest'
-        Value: 2.0
       NextState: 'InPatch1-PumpOffDelay'
-    InPatch1-PumpOffDelay: # pump needs 100 ms to recognize logic level change
+    InPatch1-PumpOffDelay: # extra time for reward sound
       Type: 'Delay'
       Params:
         Duration: 'Fixed'
-        Value: 100
-      NextState: 'InPatch1-Waiting'
-    InPatch1-IncreaseFrequency: # update reward frequency
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch1-RewardSound'
-        InternalState: 'Index'
-        Value:
-          InPatch1-Waiting: 'ToneIndex'
-      NextState: 'InPatch1-RewardSound'
-    InPatch1-DecreaseFrequency: # update reward frequency
-      Type: 'SetInternalState'
-      Params:
-        State: 'InPatch1-RewardSound'
-        InternalState: 'Index'
-        Value:
-          InPatch1-Waiting: 'ToneIndex'
-      NextState: 'InPatch1-RewardSound'
-    InPatch1-RewardSound: # play updated reward sound
-      Type: 'SetSoundState'
-      Params:
-        RewardSound1: 'On'
-      NextState: 'InPatch1-Waiting'
+        Value: 400
+      NextState: 'InPatch1-Enter'
     InPatch1-Leaving: # smoothes poke sensor for leaving decisions
       Type: 'Base'
       NextState:
@@ -344,6 +221,68 @@ StateMachine:
           Pin: 3 #'Poke1'
           Value: True
           Priority: 1
+
+    InPatch12-Enter: # patches 1 and 2 active
+      Type: 'SetSoundState'
+      Params:
+        InterpatchSound1: 'Off'
+        InPatchSound1: 'On'
+        RewardSound1: 'Off'
+        InterpatchSound2: 'Off'
+        InPatchSound2: 'On'
+        RewardSound2: 'Off'
+      NextState: 'InPatch12-Waiting'
+    InPatch12-Waiting: # reward zone 1 and 2
+      Type: 'Base'
+      NextState:
+        InPatch12-RewardSound: # dispense reward after random delay
+          ConditionType: 'Delay'
+          Duration: 'Exponential'
+          Rate: 2000
+          Min: 250
+          Max: 4000
+          Priority: 1
+        InPatch1-Leaving: # leave patch
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: False
+          Priority: 2
+        InPatch2-Leaving: # leave patch
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: False
+          Priority: 3
+    InPatch12-RewardSound: # play reward sound
+      Type: 'SetSoundState'
+      Params:
+        RewardSound1: 'On'
+        RewardSound2: 'On'
+      NextState: 'InPatch12-Reward1'
+    InPatch12-Reward1: # dispense reward
+      Type: 'Reward'
+      Params:
+          DispensePin: 'Reward1'
+          PumpRunTime: 100
+      NextState: 'InPatch12-Reward2'
+    InPatch12-Reward2: # dispense reward
+      Type: 'Reward'
+      Params:
+          DispensePin: 'Reward2'
+          PumpRunTime: 100
+      NextState: 'InPatch12-PumpOnDelay'
+    InPatch12-PumpOnDelay: # pump needs 100 ms to recognize logic level change
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 100
+      NextState: 'InPatch12-PumpOffDelay'
+    InPatch12-PumpOffDelay: # extra time for reward sound
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 400
+      NextState: 'InPatch12-Enter'
+
 
 AuditoryStimuli:
   AudioFileDirectory: '/home/mcginley-lab/Code/TreadmillIO/ClientSide/Sounds/96kHz'
@@ -374,25 +313,15 @@ AuditoryStimuli:
       Device: 'Speaker2'
       Color: 'pink' # Matplotlib color name used for visualization system
     RewardSound1:
-      Type: 'Bundle'
-      Length: 8
-      BoundsLow: 'Off'
-      BoundsHigh: 'Soft'
-      Directory: './reward_tones/'
-      Filename: '*tone_*.wav'
+      Type: 'Background'
+      Filename: 'reward_tones/3-tone_7kHz.wav'
       BaselineGain: 0.0
-      OffGain: -90.0
-      Device: 'Speaker1' # or single device, or list of devices
+      Device: 'Speaker1'
     RewardSound2:
-      Type: 'Bundle'
-      Length: 8
-      BoundsLow: 'Off'
-      BoundsHigh: 'Soft'
-      Directory: './reward_tones/'
-      Filename: '*tone_*.wav'
+      Type: 'Background'
+      Filename: 'reward_tones/3-tone_7kHz.wav'
       BaselineGain: 0.0
-      OffGain: -90.0
-      Device: 'Speaker2' # or single device, or list of devices
+      Device: 'Speaker2'
   DeviceList:
     Output1:
       Type: 'Output' # Input or Output
