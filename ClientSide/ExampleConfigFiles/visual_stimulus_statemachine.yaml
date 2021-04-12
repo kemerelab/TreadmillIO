@@ -1,0 +1,86 @@
+# The point of this config file is to light up all 12 of the GPIO LEDs for testing during manufacturing.
+# It's a simple statemachine that set's them to high, and then turns one off at a time with a 500 ms delay,
+#   until they're all off. Then the cycle repeats.
+#
+# Since its for testing, this is also a chance to validate that "LogCommands: False" doesn't cause problems.
+
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: False
+
+
+GPIO: # A list of GPIO pins used in the task
+  GPIO1: # This is an arbitrary label used later to configure Reward
+    Number: 1 # This is the pin number from the board
+    Type: 'Output' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' or 'Input_Disable' 
+                           # (where the pull-down/pull-up resistors are enabled).
+    #Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
+    #            # enabling the power channel of the audio jack.
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  GPIO2:
+    Number: 2
+    Type: 'Output'
+    Mirror: True
+  GPIO3:
+    Number: 3
+    Type: 'Output'
+    Mirror: True
+
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    OnGPIO1:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO1'
+        Value: 1
+      NextState: 'ShowLeftStimulus'
+    # ShowLeftStimulus:
+    #   Type: 'Visualization'
+    #   Params:
+    #     VisType: 'Fixed'
+    #     Command: 'Left'
+    #   NextState:
+    #     StimulusOff1:
+    #       ConditionType: 'ElapsedTime'
+    #       Duration: 500
+    ShowLeftStimulus:
+      Type: 'Visualization'
+      Params:
+        VisType: 'Random'
+        Options:
+          Left:
+            Probability: 0.5
+            Command: 'Left'
+          Right:
+            Probability: 0.5
+            Command: 'Right'
+      NextState:
+        StimulusOff1:
+          ConditionType: 'ElapsedTime'
+          Duration: 500    
+    StimulusOff1:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'GPIO1'
+        Value: 0
+      NextState: 'GoBackToGray1'
+    GoBackToGray1:
+      Type: 'Visualization'
+      Params:
+        VisType: 'Fixed'
+        Command: 'Gray'
+      NextState:
+        OnGPIO1:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+
+
+
+
