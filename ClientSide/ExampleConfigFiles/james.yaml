@@ -57,20 +57,44 @@ StateMachine:
         InPatchSound2: 'On'
         RewardSound2: 'Off'
       NextState:
-        InitialPatch1:
+        InitialPatch1-Entering:
           ConditionType: 'GPIO'
           Pin: 3 #'Poke1'
           Value: True
-        InitialPatch2:
+        InitialPatch2-Entering:
           ConditionType: 'GPIO'
           Pin: 4 #'Poke2'
           Value: True
-    InitialPatch1:
+    InitialPatch1-Entering: # smoothes poke sensor for leaving decisions
+      Type: 'Base'
+      NextState:
+        InitialPatch1-Enter:
+          ConditionType: 'ElapsedTime'
+          Duration: 500 # ms
+          Priority: 0
+        InitialState:
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: False
+          Priority: 1
+    InitialPatch2-Entering: # smoothes poke sensor for leaving decisions
+      Type: 'Base'
+      NextState:
+        InitialPatch2-Enter:
+          ConditionType: 'ElapsedTime'
+          Duration: 500 # ms
+          Priority: 0
+        InitialState:
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: False
+          Priority: 1
+    InitialPatch1-Enter:
       Type: 'SetSoundState'
       Params:
         InPatchSound2: 'Off'
       NextState: 'InPatch1-ResetPatch'
-    InitialPatch2:
+    InitialPatch2-Enter:
       Type: 'SetSoundState'
       Params:
         InPatchSound1: 'Off'
@@ -83,10 +107,22 @@ StateMachine:
         RewardSound1: 'Off'
         InterpatchSound2: 'On'
       NextState: 
-        InPatch2-Enter:
+        InPatch2-Entering:
           ConditionType: 'GPIO'
           Pin: 4 #'Poke2'
           Value: True
+          Priority: 1
+    InPatch2-Entering: # smoothes poke sensor for leaving decisions
+      Type: 'Base'
+      NextState:
+        InPatch2-Enter:
+          ConditionType: 'ElapsedTime'
+          Duration: 500 # ms
+          Priority: 0
+        Interpatch1:
+          ConditionType: 'GPIO'
+          Pin: 4 #'Poke2'
+          Value: False
           Priority: 1
     InPatch2-Enter: # turn off InterpatchSound at Speaker1
       Type: 'SetSoundState'
@@ -218,10 +254,22 @@ StateMachine:
         RewardSound2: 'Off'
         InterpatchSound1: 'On'
       NextState: 
-        InPatch1-Enter:
+        InPatch1-Entering:
           ConditionType: 'GPIO'
           Pin: 3 #'Poke1'
           Value: True
+    InPatch1-Entering: # smoothes poke sensor for leaving decisions
+      Type: 'Base'
+      NextState:
+        InPatch1-Enter:
+          ConditionType: 'ElapsedTime'
+          Duration: 500 # ms
+          Priority: 0
+        Interpatch2:
+          ConditionType: 'GPIO'
+          Pin: 3 #'Poke1'
+          Value: False
+          Priority: 1
     InPatch1-Enter: # turn off InterpatchSound at Speaker1
       Type: 'SetSoundState'
       Params:
