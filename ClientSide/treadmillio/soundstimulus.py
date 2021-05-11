@@ -1,4 +1,5 @@
 import time
+import sys
 from subprocess import Popen, DEVNULL
 
 import glob
@@ -101,7 +102,7 @@ class SoundStimulusController():
                         if (status < 0): # error in launching the playback process!
                             _startup_queue.close()
                             new_process.join()
-                            raise(RuntimeError("An error occured in starting the ALSA playback process/object."))
+                            raise(RuntiDmeError("An error occured in starting the ALSA playback process/object."))
                         status = _startup_queue.get()
 
                 elif dev['Type'] == 'Input':
@@ -237,10 +238,14 @@ class SoundStimulusController():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
+        if exc_type == SystemExit:
+            tb.print_tb(exc_traceback)
+            print('SoundStimulController: exit requested by user')
+        else:
+            print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
         tb.print_tb(exc_traceback)
 
-        print('SoundStimulController waiting for ALSA processes to join. TODO: Handle other than KeyboardInterrupt!')
+        #print('SoundStimulController waiting for ALSA processes to join. TODO: Handle other than KeyboardInterrupt!')
         # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
         #self.alsa_playback_pipe.send_bytes(pickle.dumps({'StopMessage': True}))
         while self._playback_processes:

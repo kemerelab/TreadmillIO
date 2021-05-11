@@ -12,7 +12,7 @@
 #
 #  See SoundStimulus.py - need to run `jackd -R -P50 -v -d alsa -p64 -n2 -P hw:1,0 -r48000` (use aplay -l/-L to figure out which hw device)
 #
-
+import sys
 import time
 import datetime
 import os
@@ -150,163 +150,168 @@ if 'Maze' in Config:
 
 #----------------------- Sound stimuli --------------
 
-from treadmillio.soundstimulus import SoundStimulusController
+# try:
+    from treadmillio.soundstimulus import SoundStimulusController
 
-with ExitStack() as stack:
-    if 'AuditoryStimuli' in Config and EnableSound:
-        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length, log_directory))
-    else:
-        SoundController = None
-        if 'AuditoryStimuli' in Config:
-            warnings.warn("Config file specified AuditoryStimuli, but EnableSound is False.", RuntimeWarning)
-
-    # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
-    from treadmillio import SerialInterface
-
-    if 'GPIO' in Config:
-        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=Config['GPIO']))
-    else:
-        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=None))
-        warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
-
-    # ------------------- Read in State Machine States. ------------------------------------------------------------------
-    if 'StateMachine' in Config:
-        from treadmillio.taskstatemachine import TaskStateMachine
-
-        # BUG: Should check to make sure states are all connected properly?
-        StateMachine = stack.enter_context(TaskStateMachine(Config['StateMachine'], Interface, SoundController))
-    else:
-        StateMachine = None
-
-    # ------------------- Read in VR Reward Zones. ------------------------------------------------------------------
-    if 'RewardZones' in Config:
-        from treadmillio.rewardzone import RewardZoneController
-
-        RewardZones = RewardZoneController(Config['RewardZones'], Interface, SoundController)
-
-    else:
-        RewardZones = None
-
-    if DoLogCommands:
-        # -------------------------- Set up all the different log files -------------------------------------
-        # Log git diffs for provenance
-
-        import git # gitpython
-        repo = git.Repo(search_parent_directories=True)
-
-        GitCommit = repo.head.object.hexsha
-        GitChangedFiles = [fn.a_path for fn in repo.index.diff(None)]
-        GitPatch = [fn.diff for fn in repo.index.diff(None, create_patch=True)]
-
-        with open(os.path.join(log_directory, 'ExperimentCodeDiffs.txt'), 'w') as git_file:
-            print(f'   Git Commit: {GitCommit}',file=git_file)
-            if GitChangedFiles:
-                print(f'   ChangedFiles: {GitChangedFiles}',file=git_file)
-                print(f'Patch:\n{GitPatch}',file=git_file)
-
-        # Log config file used
-        with open(os.path.join(log_directory, 'ParsedConfig.yaml'), 'w') as yaml_file:
-            yaml.dump(Config, yaml_file, indent=4)
-            
-        # Create data log file and write header
-        log_file = stack.enter_context(open(os.path.join(log_directory, 'DataLog.csv'), 'w', newline=''))
-        print(f'Experiment Data File.\n   Version {NamedVersion}',file=log_file)
-        log_writer = csv.writer(log_file) # logging is actually CSV format
-
-
-        if StateMachine and DoLogCommands:
-            # Create state machine log file and write header
-            state_machine_log = stack.enter_context(open(os.path.join(log_directory, 'StatemachineLog.csv'), 'w', newline=''))
-            print(f'State Machine Log File.\n   Version {NamedVersion}',file=state_machine_log)
-            state_log_writer = csv.writer(state_machine_log)
-
-        if RewardZones and DoLogCommands:
-            # Create state machine log file and write header
-            reward_zone_log = stack.enter_context(open(os.path.join(log_directory, 'RewardzoneLog.csv'), 'w', newline='', buffering=1))
-            print(f'Reward Zone Log File.\n   Version {NamedVersion}',file=reward_zone_log)
-            reward_zone_writer = csv.writer(reward_zone_log)
-
-
-        if Profiling:
-            execution_log = stack.enter_context(open(os.path.join(log_directory, 'execution.csv'), 'w', newline=''))
-            execution_writer = csv.writer(execution_log)
-
-
-    # ------------------- Webcam Video Recording. ------------------------------------------------------------------
-    if 'Cameras' in Config:
-        from treadmillio.uvccam.uvccam import RunCameraInterface
-        if DoLogCommands:
-            for cameraname, camera in Config['Cameras'].items():
-                camera['LogDirectory'] = log_directory
+    with ExitStack() as stack:
+        if 'AuditoryStimuli' in Config and EnableSound:
+            SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length, log_directory))
         else:
-            for cameraname, camera in Config['Cameras'].items():
-                if camera['RecordVideo']:
-                    print('Over-riding camera configuration to not record video or timestamps!!!')
-                camera['RecordVideo'] = False
+            SoundController = None
+            if 'AuditoryStimuli' in Config:
+                warnings.warn("Config file specified AuditoryStimuli, but EnableSound is False.", RuntimeWarning)
 
-        for cameraname, camera in Config['Cameras'].items():
-            shared_termination_flag = RunCameraInterface(camera) # this starts a bunch of processes
+        # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
+        from treadmillio import SerialInterface
 
+        if 'GPIO' in Config:
+            Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=Config['GPIO']))
+        else:
+            Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=None))
+            warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
 
-    # TODO: Figure out how to handle errors below. The shared termination flag should work, but it doesn't
-    
-    # ----------------- Initialization
-    ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
+        # ------------------- Read in State Machine States. ------------------------------------------------------------------
+        if 'StateMachine' in Config:
+            from treadmillio.taskstatemachine import TaskStateMachine
 
-    Interface.connect()
+            # BUG: Should check to make sure states are all connected properly?
+            StateMachine = stack.enter_context(TaskStateMachine(Config['StateMachine'], Interface, SoundController))
+        else:
+            StateMachine = None
 
-    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-    initialUnwrappedencoder = UnwrappedEncoder
-    if DoLogCommands:
-        log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0]) # Log the initial data from serial interface
+        # ------------------- Read in VR Reward Zones. ------------------------------------------------------------------
+        if 'RewardZones' in Config:
+            from treadmillio.rewardzone import RewardZoneController
 
-    if SoundController:
-        SoundController.start_capture() # TODO: This doesn't currently do anything
+            RewardZones = RewardZoneController(Config['RewardZones'], Interface, SoundController)
 
-    if StateMachine:
-        StateMachine.start(MasterTime)
-
-    while(True):
-        ## every 2 ms happens:
-        FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-        last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
-                                    # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
+        else:
+            RewardZones = None
 
         if DoLogCommands:
-            log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
+            # -------------------------- Set up all the different log files -------------------------------------
+            # Log git diffs for provenance
 
-        # -------------------- Updates -------------------- 
-        Interface.update_pulses() # lower any outstanding GPIO pulses
+            import git # gitpython
+            repo = git.Repo(search_parent_directories=True)
+
+            GitCommit = repo.head.object.hexsha
+            GitChangedFiles = [fn.a_path for fn in repo.index.diff(None)]
+            GitPatch = [fn.diff for fn in repo.index.diff(None, create_patch=True)]
+
+            with open(os.path.join(log_directory, 'ExperimentCodeDiffs.txt'), 'w') as git_file:
+                print(f'   Git Commit: {GitCommit}',file=git_file)
+                if GitChangedFiles:
+                    print(f'   ChangedFiles: {GitChangedFiles}',file=git_file)
+                    print(f'Patch:\n{GitPatch}',file=git_file)
+
+            # Log config file used
+            with open(os.path.join(log_directory, 'ParsedConfig.yaml'), 'w') as yaml_file:
+                yaml.dump(Config, yaml_file, indent=4)
+                
+            # Create data log file and write header
+            log_file = stack.enter_context(open(os.path.join(log_directory, 'DataLog.csv'), 'w', newline=''))
+            print(f'Experiment Data File.\n   Version {NamedVersion}',file=log_file)
+            log_writer = csv.writer(log_file) # logging is actually CSV format
+
+
+            if StateMachine and DoLogCommands:
+                # Create state machine log file and write header
+                state_machine_log = stack.enter_context(open(os.path.join(log_directory, 'StatemachineLog.csv'), 'w', newline=''))
+                print(f'State Machine Log File.\n   Version {NamedVersion}',file=state_machine_log)
+                state_log_writer = csv.writer(state_machine_log)
+
+            if RewardZones and DoLogCommands:
+                # Create state machine log file and write header
+                reward_zone_log = stack.enter_context(open(os.path.join(log_directory, 'RewardzoneLog.csv'), 'w', newline='', buffering=1))
+                print(f'Reward Zone Log File.\n   Version {NamedVersion}',file=reward_zone_log)
+                reward_zone_writer = csv.writer(reward_zone_log)
+
+
+            if Profiling:
+                execution_log = stack.enter_context(open(os.path.join(log_directory, 'execution.csv'), 'w', newline=''))
+                execution_writer = csv.writer(execution_log)
+
+
+        # ------------------- Webcam Video Recording. ------------------------------------------------------------------
+        if 'Cameras' in Config:
+            from treadmillio.uvccam.uvccam import RunCameraInterface
+            if DoLogCommands:
+                for cameraname, camera in Config['Cameras'].items():
+                    camera['LogDirectory'] = log_directory
+            else:
+                for cameraname, camera in Config['Cameras'].items():
+                    if camera['RecordVideo']:
+                        print('Over-riding camera configuration to not record video or timestamps!!!')
+                    camera['RecordVideo'] = False
+
+            for cameraname, camera in Config['Cameras'].items():
+                shared_termination_flag = RunCameraInterface(camera) # this starts a bunch of processes
+
+
+        # TODO: Figure out how to handle errors below. The shared termination flag should work, but it doesn't
+        
+        # ----------------- Initialization
+        ##### Actually connect to IO device. We wait until here so that data doesn't get lost/confused in serial buffer
+
+        Interface.connect()
+        FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+        initialUnwrappedencoder = UnwrappedEncoder
+        if DoLogCommands:
+            log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0]) # Log the initial data from serial interface
 
         if SoundController:
-            SoundController.update_beeps(MasterTime) # stop any outstanding beeps
+            SoundController.start_capture() # TODO: This doesn't currently do anything
 
         if StateMachine:
+            StateMachine.start(MasterTime)
+
+    
+        while(True):
+            ## every 2 ms happens:
+            try:
+                FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+            except KeyboardInterrupt:
+                print("Shutdown requested... exiting")
+                sys.exit()
+            last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
+                                        # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
+
             if DoLogCommands:
-                StateMachine.update_statemachine(state_log_writer.writerow) # update the state machine
-            else:
-                StateMachine.update_statemachine(None) # update the state machine
+                log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
 
-        unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
-        pos = unwrapped_pos % virtual_track_length
+            # -------------------- Updates -------------------- 
+            Interface.update_pulses() # lower any outstanding GPIO pulses
 
-        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {pos}. Lap: {unwrapped_pos // virtual_track_length}')
+            if SoundController:
+                SoundController.update_beeps(MasterTime) # stop any outstanding beeps
 
-        if SoundController:
-            SoundController.update_localized(pos, unwrapped_pos) # update VR-position-dependent sounds
+            if StateMachine:
+                if DoLogCommands:
+                    StateMachine.update_statemachine(state_log_writer.writerow) # update the state machine
+                else:
+                    StateMachine.update_statemachine(None) # update the state machine
 
-        if RewardZones:
-            if DoLogCommands:
-                RewardZones.update_reward_zones(MasterTime, pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
-            else:
-                RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
+            unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
+            pos = unwrapped_pos % virtual_track_length
 
-        if Profiling and DoLogCommands:
-            exec_time = time.monotonic() - last_ts
-            execution_writer.writerow([exec_time])
+            if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
+                print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {pos}. Lap: {unwrapped_pos // virtual_track_length}')
 
+            if SoundController:
+                SoundController.update_localized(pos, unwrapped_pos) # update VR-position-dependent sounds
 
+            if RewardZones:
+                if DoLogCommands:
+                    RewardZones.update_reward_zones(MasterTime, pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
+                else:
+                    RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
+
+            if Profiling and DoLogCommands:
+                exec_time = time.monotonic() - last_ts
+                execution_writer.writerow([exec_time])
+# except SystemExit:
+#     sys.exit()
 
 
 

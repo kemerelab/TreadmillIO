@@ -1039,7 +1039,12 @@ class TaskStateMachine():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        print('TaskStateMachine: exiting because of exception <{}>'.format(exc_type.__name__))
+        if exc_type == SystemExit:
+            if self.socket:
+                self.socket.close()
+            print('TaskStateMachine: exit requested by user')
+        else:
+            print('TaskStateMachine: exiting because of exception <{}>'.format(exc_type.__name__))
         if self.socket:
             self.socket.close()
 
