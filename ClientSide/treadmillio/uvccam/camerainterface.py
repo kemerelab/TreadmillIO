@@ -66,6 +66,16 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
                     else:
                         print("    {}: {}".format(c.display_name, c.value))
 
+            # HACK: In some older C920 models, the focus resets to an old value when
+            # capture is started. You first must set the focus value, then start
+            # capturing, and then reset the focus value again.
+            frame = self._cap.get_frame_timeout(2/self.frame_rate)
+            del frame
+            for c in self._cap.controls:
+                if c.display_name in config.get('CameraParams', []) \
+                   and c.display_name == 'Absolute Focus':
+                    c.value = config['CameraParams'][c.display_name]
+
         def run(self):
             while not check_shm(self._terminate_flag):
                 frame = self._cap.get_frame_timeout(2/self.frame_rate)

@@ -2,10 +2,10 @@ Info: # "Info" configuration options can be overridden by command line options
   MouseID: '' # Used to name saved data file
   Note: '' # Added in a block at the start of saved data file
   Session: '' # This is added to default (date and time)
-  TaskType: Poisson Drip
+  TaskType: 'Poisson Drip'
 
 Preferences:
-  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  HeartBeat: 10000 # The interval at which a heart-beat info message is printed to screen (in ms) 
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
@@ -143,16 +143,10 @@ StateMachine:
       Params:
         ModelType: 'Poisson' 
         ModelParams: # list of params for specific model type
-          tau: # decay rate for lambda (example of uniform dist)
-            Distribution: 'Uniform'
-            Low: 10.0
-            High: 15.0
-          V0: 0.5 # drip size (example of fixed value)
-          lambda0: # initial rate for Poisson process (example of log-uniform dist)
-            Distribution: 'LogUniform'
-            Low: 1.0
-            High: 2.0
-        SwitchRate: 0.1
+          tau: 6.0 # decay rate for lambda (example of uniform dist)
+          V0: 0.1 # drip size (example of fixed value)
+          lambda0: 25.0 # initial rate for Poisson process (example of log-uniform dist)
+        SwitchRate: 0.0
       NextState: 
         InPatch2-Available: # reward available
           ConditionType: 'Reward' # require all patches to have this
@@ -160,11 +154,11 @@ StateMachine:
           Priority: 1
         InPatch2-IncreaseFrequency: # incremental filling
           ConditionType: 'Increment'
-          Value: 1.0
+          Value: 2.0
           Priority: 2
         InPatch2-DecreaseFrequency: # reward harvested
           ConditionType: 'Decrement'
-          Value: 1.0
+          Value: 2.0
           Priority: 3
         InPatch2-Leaving: # leave patch
           ConditionType: 'GPIO'
@@ -176,7 +170,7 @@ StateMachine:
       NextState:
         InPatch2-Waiting: # default to waiting
           ConditionType: 'ElapsedTime'
-          Duration: 25
+          Duration: 10
           Priority: 0
         InPatch2-Reward: # dispense reward if lick 
           ConditionType: 'GPIO'
@@ -289,16 +283,10 @@ StateMachine:
       Params:
         ModelType: 'Poisson' 
         ModelParams: # list of params for specific model type
-          tau: # decay rate for lambda (example of uniform dist)
-            Distribution: 'Uniform'
-            Low: 10.0
-            High: 15.0
-          V0: 0.5 # drip size (example of fixed value)
-          lambda0: # initial rate for Poisson process (example of log-uniform dist)
-            Distribution: 'LogUniform'
-            Low: 1.0
-            High: 2.0
-        SwitchRate: 0.1
+          tau: 6.0
+          V0: 0.1 # drip size (example of fixed value)
+          lambda0: 25.0
+        SwitchRate: 0.0
       NextState: 
         InPatch1-Available: # reward available
           ConditionType: 'Reward' # require all patches to have this
@@ -310,7 +298,7 @@ StateMachine:
           Priority: 2
         InPatch1-DecreaseFrequency: # reward harvested
           ConditionType: 'Decrement'
-          Value: 1.0
+          Value: 2.0
           Priority: 3
         InPatch1-Leaving: # leave patch
           ConditionType: 'GPIO'
@@ -394,31 +382,31 @@ StateMachine:
           Priority: 1
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/mcginley-lab/Code/TreadmillIO/ClientSide/Sounds/96kHz'
+  AudioFileDirectory: '/home/mcginley-lab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
   Viewer: True
   StimuliList:
     InterpatchSound1: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'pink_noise.wav'
-      BaselineGain: 0.0
+      BaselineGain: -10.0
       Device: 'Speaker1' # or single device, or list of devices
       Color: 'pink' # Matplotlib color name used for visualization system
     InterpatchSound2: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'pink_noise.wav'
-      BaselineGain: 0.0
+      BaselineGain: -10.0
       Device: 'Speaker2'
       Color: 'pink' # Matplotlib color name used for visualization system
     InPatchSound1: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'tone_cloud.wav'
-      BaselineGain: 0.0
+      BaselineGain: -10.0
       Device: 'Speaker1'
       Color: 'pink' # Matplotlib color name used for visualization system
     InPatchSound2: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'tone_cloud.wav'
-      BaselineGain: 0.0
+      BaselineGain: -10.0
       Device: 'Speaker2'
       Color: 'pink' # Matplotlib color name used for visualization system
     RewardSound1:
@@ -428,7 +416,7 @@ AuditoryStimuli:
       BoundsHigh: 'Soft'
       Directory: './reward_tones/'
       Filename: '*tone_*.wav'
-      BaselineGain: 0.0
+      BaselineGain: -10.0
       OffGain: -90.0
       Device: 'Speaker1' # or single device, or list of devices
     RewardSound2:
@@ -438,7 +426,7 @@ AuditoryStimuli:
       BoundsHigh: 'Soft'
       Directory: './reward_tones/'
       Filename: '*tone_*.wav'
-      BaselineGain: 0.0
+      BaselineGain: -10.0
       OffGain: -90.0
       Device: 'Speaker2' # or single device, or list of devices
   DeviceList:
@@ -448,7 +436,7 @@ AuditoryStimuli:
       BufferSize: 1024
       NPeriods: 2
       NChannels: 2
-      SamplingRate: 96000
+      SamplingRate: 192000
       ChannelLabels:
         Speaker1: 0
         Speaker2: 1
@@ -456,31 +444,31 @@ AuditoryStimuli:
       Type: 'Input'
       HWDevice: 'hw:CARD=SoundCard,DEV=0'
       NChannels: 2
-      SamplingRate: 96000
+      SamplingRate: 192000
       BufferSize: 1024 
       Record: True
       FilenameHeader: ''
-    Camera1Microphone:
-      Type: 'Input'
-      HWDevice: 'hw:CARD=C920,DEV=0'
-      NChannels: 2
-      SamplingRate: 16000
-      BufferSize: 1024 
-      Record: True
-      FilenameHeader: ''
-    Camera2Microphone:
-      Type: 'Input'
-      HWDevice: 'hw:CARD=C920_1,DEV=0'
-      NChannels: 2
-      SamplingRate: 16000
-      BufferSize: 1024 
-      Record: True
-      FilenameHeader: ''
+    # Camera1Microphone:
+    #   Type: 'Input'
+    #   HWDevice: 'hw:CARD=C920,DEV=0'
+    #   NChannels: 2
+    #   SamplingRate: 16000
+    #   BufferSize: 1024 
+    #   Record: True
+    #   FilenameHeader: ''
+    # Camera2Microphone:
+    #   Type: 'Input'
+    #   HWDevice: 'hw:CARD=C920_1,DEV=0'
+    #   NChannels: 2
+    #   SamplingRate: 16000
+    #   BufferSize: 1024 
+    #   Record: True
+    #   FilenameHeader: ''
 
 Cameras:
   Camera1:
     RecordVideo: True
-    FilenameHeader: 'MouseCam1'
+    FilenameHeader: 'Camera-LTrack-Left'
     Position: [960, 0]
     Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
     CameraIndex: 0
@@ -489,11 +477,26 @@ Cameras:
     FrameRate: 30
     Verbose: False
     CameraParams:
+      Brightness: 128
+      Contrast: 128
+      Saturation: 128
+      #White Balance temperature: 6500 # set to max since using IR light
+      White Balance temperature,Auto: 1 # auto seems to work better
+      Gain: 110 # relevant only if Auto Exposure Mode is 1
       Power Line frequency: 2, # 60 Hz
-      Gain: 10
+      Sharpness: 128
+      Backlight Compensation: 0
+      Auto Exposure Mode: 8 # aperture priority
+      Auto Exposure Priority: 0 # fixed frame rate
+      #Absolute Exposure Time: 250 # set by FrameRate    
+      Pan control: 0
+      Tilt control: 0
+      Auto Focus: 0 # manual focus
+      Absolute Focus: 60
+      Zoom absolute control: 100
   Camera2:
     RecordVideo: True
-    FilenameHeader: 'MouseCam2'
+    FilenameHeader: 'Camera-LTrack-Right'
     Position: [960, 480]
     Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
     CameraIndex: 1
@@ -502,8 +505,51 @@ Cameras:
     FrameRate: 30
     Verbose: False
     CameraParams:
-      Power Line frequency: 2, # 60 Hz
-      Gain: 10
+      Brightness: 180
+      Contrast: 128
+      Saturation: 128
+      #White Balance temperature: 6500 # set to max since using IR light
+      White Balance temperature,Auto: 1 # auto seems to work better
+      Gain: 100 # relevant only if Auto Exposure Mode is 1
+      Power Line frequency: 2 # 60 Hz
+      Sharpness: 128
+      Backlight Compensation: 0
+      Auto Exposure Mode: 8 # aperture priority
+      Auto Exposure Priority: 0 # fixed frame rate
+      #Absolute Exposure Time: 250 # set by FrameRate    
+      Pan control: 0
+      Tilt control: 0
+      Auto Focus: 0 # manual focus
+      Absolute Focus: 40
+      Zoom absolute control: 100
+  # Camera3:
+  #   RecordVideo: True
+  #   FilenameHeader: 'Camera-LinearTrack'
+  #   Position: [960, 0]
+  #   Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
+  #   CameraIndex: 2
+  #   ResX: 1280 
+  #   ResY: 720
+  #   FrameRate: 30
+  #   Verbose: False
+  #   CameraParams:
+  #     Brightness: 128
+  #     Contrast: 128
+  #     Saturation: 128
+  #     #White Balance temperature: 6500 # set to max since using IR light
+  #     White Balance temperature,Auto: 1 # auto seems to work better
+  #     Gain: 180 # relevant only if Auto Exposure Mode is 1
+  #     Power Line frequency: 2, # 60 Hz
+  #     Sharpness: 128
+  #     Backlight Compensation: 0
+  #     Auto Exposure Mode: 8 # aperture priority
+  #     Auto Exposure Priority: 0 # fixed frame rate
+  #     #Absolute Exposure Time: 250 # set by FrameRate    
+  #     Pan control: 0
+  #     Tilt control: 0
+  #     Auto Focus: 0 # manual focus
+  #     Absolute Focus: 0
+  #     Zoom absolute control: 100
   # LogitechC920Defaults:
     # ResX: 1920 
     # ResY: 1080
@@ -552,3 +598,12 @@ Cameras:
 # - The "hacky" departures from using simplistic, low-level states are:
 #   - A more complex "Patch" type state that computes when rewards are available.
 #   - A "Reset" value for resetting the patch internal clock.
+# - Some notes about camera settings(from libuvc docs):
+#   - Auto exposure mode: determines manual/auto settings for shutter speed
+#     (exposure time) and aperture (iris)   
+#       UVC_AUTO_EXPOSURE_MODE_MANUAL (1) - manual exposure time, manual iris
+#       UVC_AUTO_EXPOSURE_MODE_AUTO (2) - auto exposure time, auto iris
+#       UVC_AUTO_EXPOSURE_MODE_SHUTTER_PRIORITY (4) - manual exposure time, auto iris
+#       UVC_AUTO_EXPOSURE_MODE_APERTURE_PRIORITY (8) - auto exposure time, manual iris
+#   - Auto exposure priority: if set to 1 and auto exposure mode in (2) or (4), 
+#     then frame rate may dynamically vary; if set to 0, frame rate is fixed.
