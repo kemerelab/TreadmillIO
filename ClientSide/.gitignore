@@ -4,3 +4,6 @@ Log*.txt
 # Python
 *.pyc
 *-checkpoint.ipynb
+
+# Ignore bundled auditory stimuli
+Sounds/*/reward_tones/*
