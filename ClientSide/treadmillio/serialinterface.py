@@ -1,4 +1,4 @@
-
+import sys
 import serial
 import struct
 import warnings
@@ -35,6 +35,11 @@ class SerialInterface():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
+        if exc_type == SystemExit:
+            if (self.serial):
+                self.serial.close()
+            print('SerialInterface: exit requested by user')
+            sys.exit(1)
         print('SerialInterface: exiting because of exception <{}>'.format(exc_type.__name__))
         tb.print_tb(exc_traceback)
         if (self.serial):

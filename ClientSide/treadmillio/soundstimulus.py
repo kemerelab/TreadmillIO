@@ -1,24 +1,13 @@
 import time
-from subprocess import Popen, DEVNULL
-
-import glob
-import os
 import warnings
-import socket
-import signal
-from functools import partial
 import pickle
 
-from multiprocessing import Process, Pipe, Value, Queue
-import pickle
+from multiprocessing import Process, Pipe, Queue
 
 import traceback as tb
-
+import sys
 from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
 from .alsainterface import normalize_output_device, normalize_input_device, look_for_and_add_stimulus_defaults
-from .alsainterface import sort_bundled_sounds
-
-import cProfile
 
 import math
 
@@ -237,10 +226,15 @@ class SoundStimulusController():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
-        print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
+        if exc_type == SystemExit:
+            tb.print_tb(exc_traceback)
+            print('SoundStimulController: exit requested by user')
+            sys.exit(1)
+        else: 
+            print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
         tb.print_tb(exc_traceback)
 
-        print('SoundStimulController waiting for ALSA processes to join. TODO: Handle other than KeyboardInterrupt!')
+        print('SoundStimulController waiting for ALSA processes to join.')
         # TODO: Do we need to differentiate different signals? If it's not KeyboardInterrupt, we need to tell it to stop:
         #self.alsa_playback_pipe.send_bytes(pickle.dumps({'StopMessage': True}))
         while self._playback_processes:

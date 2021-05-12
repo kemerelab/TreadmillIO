@@ -23,6 +23,7 @@ import csv
 import zmq
 import numpy as np
 import warnings
+import sys
 
 from contextlib import ExitStack
 
@@ -266,9 +267,14 @@ with ExitStack() as stack:
     if StateMachine:
         StateMachine.start(MasterTime)
 
+    sys.tracebacklimit = 0
     while(True):
         ## every 2 ms happens:
-        FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+        try:
+            FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
+        except KeyboardInterrupt:
+            print("Shutdown requested... exiting")
+            sys.exit()
         last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
