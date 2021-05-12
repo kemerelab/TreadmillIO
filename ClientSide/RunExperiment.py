@@ -274,7 +274,7 @@ with ExitStack() as stack:
             FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
         except KeyboardInterrupt:
             print("Shutdown requested... exiting")
-            sys.exit()
+            sys.exit(1)
         last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 

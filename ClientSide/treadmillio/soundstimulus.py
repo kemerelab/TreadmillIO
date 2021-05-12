@@ -230,8 +230,7 @@ class SoundStimulusController():
             tb.print_tb(exc_traceback)
             print('SoundStimulController: exit requested by user')
             sys.exit(1)
-        else: 
-            print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
+        print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
         tb.print_tb(exc_traceback)
 
         print('SoundStimulController waiting for ALSA processes to join.')

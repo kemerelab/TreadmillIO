@@ -1044,8 +1044,7 @@ class TaskStateMachine():
                 self.socket.close()
             print('TaskStateMachine: exit requested by user')
             sys.exit(1)
-        else:
-            print('TaskStateMachine: exiting because of exception <{}>'.format(exc_type.__name__))
+        print('TaskStateMachine: exiting because of exception <{}>'.format(exc_type.__name__))
         if self.socket:
             self.socket.close()
 
