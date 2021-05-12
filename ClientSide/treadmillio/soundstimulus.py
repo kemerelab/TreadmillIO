@@ -84,8 +84,6 @@ class SoundStimulusController():
 
         # Start the ALSA playback and record processes.
         #  - ALSA playback will also load all the sound files!
-
-
         if 'DeviceList' in sound_config:
             _startup_queue = Queue()
             for dev_name, dev in sound_config['DeviceList'].items():
@@ -102,7 +100,7 @@ class SoundStimulusController():
                         if (status < 0): # error in launching the playback process!
                             _startup_queue.close()
                             new_process.join()
-                            raise(RuntiDmeError("An error occured in starting the ALSA playback process/object."))
+                            raise(RuntimeError("An error occured in starting the ALSA playback process/object."))
                         status = _startup_queue.get()
 
                 elif dev['Type'] == 'Input':

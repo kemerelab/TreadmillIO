@@ -26,13 +26,18 @@ import warnings
 
 from contextlib import ExitStack
 
-
+DebugFlag = False
 NamedVersion = '1.1'
 Profiling = False
 
+# def exception_handler(exception_type, exception, traceback, debug_hook=sys.excepthook):
+#     if DebugFlag:
+#         debug_hook(exception_type, exception, traceback)
+#     else: 
+#         print ("hi")
+# sys.excepthook = exception_handler
 
 ### Maybe should add argcomplete for this program?
-
 # Command-line arguments: computer settings
 # Command-line arguments: computer settings
 parser = argparse.ArgumentParser(description='Run simple linear track experiment.')
@@ -46,7 +51,6 @@ parser.add_argument('--output-dir', default=None,
                     help='Directory to write output file (defaults to cwd)')
 parser.add_argument('--no-check-space', default=None,
                     help='Exits if less than 10 GB of space is available.')
-
 
 args = parser.parse_args()
 print(args)
@@ -266,12 +270,14 @@ if 'Maze' in Config:
         if StateMachine:
             StateMachine.start(MasterTime)
 
-    
+        sys.tracebacklimit = 0
+
         while(True):
             ## every 2 ms happens:
             try:
                 FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
             except KeyboardInterrupt:
+
                 print("Shutdown requested... exiting")
                 sys.exit()
             last_ts = time.monotonic()   # to match with miniscope timestamps (which is written in msec, here is sec)
@@ -312,9 +318,6 @@ if 'Maze' in Config:
                 execution_writer.writerow([exec_time])
 # except SystemExit:
 #     sys.exit()
-
-
-
 
 
 
