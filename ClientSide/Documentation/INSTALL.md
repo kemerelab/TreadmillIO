@@ -67,7 +67,7 @@ Optionally download the Arduino package and the Teensy installation files from
 [https://www.pjrc.com/teensy/td_download.html].
 
 Install the udev rules copied from this website in
-[Documentation/49-teensy.rules] to `/etc/udev/rules.d`.
+[Documentation/00-teensy.rules] to `/etc/udev/rules.d`.
 
 If you will use the camera interface, you'll need to make a rules file for your
 camera. Look for it in `lsusb` and find out the vendor and product IDs. It will
