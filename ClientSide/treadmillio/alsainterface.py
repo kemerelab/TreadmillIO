@@ -17,6 +17,7 @@ import pickle
 import soundfile
 import warnings
 import signal
+import zmq
 
 #from profilehooks import profile
 
@@ -26,19 +27,12 @@ DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
                          'NChannels': 2,
                          'NPeriods': 4,
                          'DType': 'int16',
-                         'BufferSize': 32, 
+                         'BufferSize': 256, 
+                         'SamplingRate': 96000,
                          'ChannelLabels': {'Default1': 0, 'Default2': 1}}
 
-DEFAULT_INPUT_DEVICE = {'Type': 'Input',
-                        'HWDevice': '',
-                        'NChannels': 2,
-                        'SamplingRate': 96000,
-                        'DType': 'int16',
-                        'BufferSize': 1024, 
-                        'FilenameHeader': ''}
 
-
-ILLEGAL_STIMULUS_NAMES = ['StopMessage']
+ILLEGAL_STIMULUS_NAMES = ['ConfigDevice','LoadStimuli','Run','Stop']
 
 def tukey_window(N, N_overlap=None):
     # tukey_window(N, N_overlap=None) -> full_window, left_lobe_and_top, right_lobe
@@ -130,102 +124,92 @@ class Stimulus():
         # print('Gain: {}'.format(20*np.log10(gain))) # TODO: Add this as debug info
 
 class ALSAPlaybackSystem():
-    def __init__(self, dev_name, config, file_root, control_pipe, log_directory=None):
+    def __init__(self):
+        self.errors = []
         self.running = False
         self.adevice = None
+        self.stimuli = None
 
-        if not log_directory:
-            warnings.warn("XRuns will be logged in cwd.")
-            log_directory = os.getcwd()
+    def configure_device(self, config):
+        device = config.get('HWDevice', '')
+        self.buffer_size = config.get('BufferSize', 1024)
+        dtype = config.get('DType', 'int16')
+        self.fs = config.get('SamplingRate', 96000)
+        self.num_channels = config.get('NChannels', 2)
+        dev_name = config.get('DeviceName', "Bob")
 
-        self.xrun_filename = os.path.join(log_directory, 'alsa_playback_xruns.txt')
+        log_directory = config.get('LogDirectory', os.getcwd())
+        self.logfilename = os.path.join(log_directory, '{}.wav.log'.format(dev_name))
+        self.soundfilename = os.path.join(log_directory, '{}.wav'.format(dev_name))
+        self.xrun_filename = os.path.join(log_directory, 'alsa_playbacks_xruns.txt')
+        #self.num_channels = config['DeviceList'][dev_name]['NChannels']
 
-        self.control_pipe = control_pipe
-
-        config['DeviceList'][dev_name] = normalize_output_device(config['DeviceList'][dev_name])
-
-        buffer_size = config['DeviceList'][dev_name]['BufferSize']
-        dtype = config['DeviceList'][dev_name]['DType']
-        device = config['DeviceList'][dev_name]['HWDevice']
-        channel_labels = config['DeviceList'][dev_name]['ChannelLabels']
-        num_channels = config['DeviceList'][dev_name]['NChannels']
-
-        # Set up stimuli with default values
-        StimuliList = look_for_and_add_stimulus_defaults(config)
-
-        # Begin by loading sound files
-        self.stimuli = {}
-        if len(StimuliList) < 1:
-            raise(ValueError('Must specify at least one stimulus!'))
-
-        # Check for number of bundled sounds
-        self.num_stimuli = 0
-        for stimulus_name, stimulus in StimuliList.items():
-            if stimulus['Type'] == 'Bundle':
-                root_dir = stimulus.get('Directory', './')
-                self.num_stimuli += len(glob.glob(os.path.join(file_root, root_dir, stimulus['Filename'])))
-            else:
-                self.num_stimuli += 1
-
-        self.data_buf = np.zeros((buffer_size,num_channels,self.num_stimuli)) # data buffer for all data
-        k = 0
-        for stimulus_name, stimulus in StimuliList.items():
-            if stimulus_name in ILLEGAL_STIMULUS_NAMES:
-                raise(ValueError('{} is an illegal name for a stimulus.'.format(stimulus_name)))
-
-            print('Adding stimulus {}...'.format(stimulus_name))
-            if stimulus.get('Device', 'Default1') in channel_labels:
-                channel = channel_labels[stimulus.get('Device', 'Default1')]
-                gain = stimulus.get('OffGain', -90.0)
-                if stimulus['Type'] == 'Bundle':
-                    root_dir = stimulus.get('Directory', './')
-                    filelist = sort_bundled_sounds(glob.glob(os.path.join(file_root, root_dir, stimulus['Filename'])))
-                    for i, filepath in enumerate(filelist):
-                        self.stimuli['-'.join([stimulus_name, str(i)])] = Stimulus(filepath, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
-                        k = k + 1
-                else:
-                    filename = os.path.join(file_root, stimulus['Filename'])
-                    self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
-                    k = k + 1
-            else:
-                print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
-
-        # Check to make sure all the sampling rates came out the same
-        self.fs = set([stim.fs for _, stim in self.stimuli.items()])
-        if len(self.fs) > 1:
-            for _, stim in self.stimuli.items():
-                print('{}: fs = {}'.format(stim.filename, stim.fs))
-            raise(ValueError('Not all stimuli had the same sampling rate.'))
-        else:
-            self.fs = self.fs.pop()
-
-        ####
-        # TODO: WHAT HAPPENS IF WE CONTROL C RIGHT DURING THIS????
-        # start reading from the pipe to get what ever initialization happens out of the way
-        if self.control_pipe.poll():
-            msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
-            print('Unexpected message before start: {}'.format(msg))
-            print('TODO: Figure out how to shutdown pipes properly\n') # TODO here
-
+        # Clean up if we're re-configuring
+        if self.adevice:
+            self.adevice.close()
+            del(self.adevice)
 
         # Open alsa device
         self.adevice = alsaaudio.PCM(device=device)
-        self.adevice.setchannels(num_channels) # We'll always present stereo audio
+        self.adevice.setchannels(self.num_channels) # We'll always present stereo audio
         self.adevice.setrate(self.fs)
         if dtype == 'int16':
             self.adevice.setformat(alsaaudio.PCM_FORMAT_S16_LE)
         # elif dtype == 'int32':
         #     self.adevice.setformat(alsaaudio.PCM_FORMAT_S32_LE)
         else:
-            raise(ValueError("dtypes other than 'int16' not currently supported."))
-        self.adevice.setperiodsize(buffer_size)
+            self.errors.append("dtypes other than 'int16' not currently supported.")
+            return False
+        self.adevice.setperiodsize(self.buffer_size)
 
         print('\nALSA playback configuration ' + '-'*10 + '\n')
         self.adevice.dumpinfo()
         print('\n\n')
 
-        self.out_buf = np.zeros((buffer_size,num_channels), dtype=dtype, order='C')
+        self.out_buf = np.zeros((self.buffer_size, self.num_channels), dtype=dtype, order='C')
+
+        return True
         ######
+
+    def load_stimuli(self, stimuli_list):
+        if not self.adevice:
+            self.errors.append("Can't load files without initializing device.")
+            return False
+
+        # Begin by loading sound files
+        self.num_stimuli = len(stimuli_list)
+        if self.num_stimuli < 1:
+            self.errors.append("Must specify at least one stimulus.")
+            return False
+
+        self.stimuli = {}
+
+        self.data_buf = np.zeros((self.buffer_size, self.num_channels, self.num_stimuli)) # data buffer for all data
+        k = 0
+        for stimulus_name, stimulus in stimuli_list.items():
+            print('Adding stimulus {}...'.format(stimulus_name))
+            channel = stimulus.get('Channel', 0)
+            gain = stimulus.get('OffGain', 0.0) #-90.0
+            try:
+                self.stimuli[stimulus_name] = Stimulus(stimulus['Filename'], self.data_buf[:,:,k], channel, self.buffer_size, gain, window=self.buffer_size) # default to Hanning window!
+            except:
+                self.errors.append("Error loading {}.".format(stimulus['Filename']))
+                return False
+
+
+        # Check to make sure all the sampling rates came out the same
+        self.fs = set([stim.fs for _, stim in self.stimuli.items()])
+        if len(self.fs) > 1:
+            for _, stim in self.stimuli.items():
+                print('{}: fs = {}'.format(stim.filename, stim.fs))
+            #raise(ValueError('Not all stimuli had the same sampling rate.'))
+            self.errors.append('Not all stimuli had the same sampling rate.')
+            return False
+        else:
+            self.fs = self.fs.pop()
+
+        return True
+
 
     def __del__(self):
         if self.adevice:
@@ -234,55 +218,81 @@ class ALSAPlaybackSystem():
     def set_gain(self, stimulus, gain):
         self.stimuli[stimulus].gain = gain
 
-    def play(self):
+    def play(self, socket):
         print(time.time())
+        if not self.adevice:
+            self.errors.append("No device configured.")
+            return False
+
+        if not self.stimuli:
+            self.errors.append("No stimuli specified.")
+            return False
+
         with open(self.xrun_filename, 'w') as xrun_logfile:
             self.running = True
+            socket.send(b"Running") # Send back a message that we started successfully
+
+            poller = zmq.Poller()
+            poller.register(socket, zmq.POLLIN)
+
+            tstart = 0
+            tend = 0
+            i = 0
             while self.running:
                 for _, stim in self.stimuli.items():
                     stim.get_nextbuf()
                 self.out_buf[:] = self.data_buf.sum(axis=2).astype(dtype=self.out_buf.dtype, order='C')
-                res, xruns = self.adevice.write(self.out_buf)
+                res, xruns = self.adevice.write(self.out_buf) # Blocking!!!
                 if xruns != 0:
                     print('xrun in playback [{}] at {}'.format(xruns, time.monotonic()))
                     print('xrun in playback [{}] at {}'.format(xruns, time.monotonic()), file=xrun_logfile)
 
-                while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
-                    msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
-                    commands = pickle.loads(msg)
-                    # if 'StopMessage' in commands:
-                    #     print('Got StopMessage in ALSA process.')
-                    #     break;
-                    try:
-                        for key, gain in commands.items():
-                            if key in self.stimuli:
-                                self.stimuli[key].gain = gain
-                            elif key is not None: # pass if key is None
-                                raise ValueError('Unknown stimulus {}.'.format(key))
-                    except:
-                        print('Exception: ', commands)
+                tstart = time.time()
+                msg_list = poller.poll(timeout=0)
+                tend = time.time()
+                i = i + 1
+                if i == 100:
+                    print(tend-tstart)
+                    i = 0
 
+                if msg_list:
+                    for sock, num in msg_list:
+                        msg = socket.recv()
+                        commands = pickle.loads(msg)
+                        if 'Stop' in commands:
+                            print('Got StopMessage in ALSA process.')
+                            self.running = False
+                            break;
+                        else:
+                            try:
+                                for key, gain in commands.items():
+                                    if key in self.stimuli:
+                                        self.stimuli[key].gain = gain
+                                    elif key is not None: # pass if key is None
+                                        raise ValueError('Unknown stimulus {}.'.format(key))
+                            except:
+                                self.running = False
+                                print('Exception: ', commands)
 
-        if self.running == False:
-            print('SIGINT flag changed.')
+        return True
+        
 
 class ALSARecordSystem():
-    def __init__(self, dev_name, config, log_directory=None):
+    def __init__(self):
         self.adevice = None
 
-        if not log_directory:
-            warnings.warn("Recording microphone input to cwd because log file wasn't specified.")
-            log_directory = os.getcwd()
+    def configure_device(self, config):
 
+        device = config.get('HWDevice', '')
+        self.buffer_size = config.get('BufferSize', 1024)
+        dtype = config.get('DType', 'int16')
+        self.fs = config.get('SamplingRate', 96000)
+        self.channels = config.get('NChannels', 2)
+
+        log_directory = config.get('LogDirectory', os.getcwd())
+        self.logfilename = os.path.join(log_directory, '{}.wav.log'.format(dev_name))
+        self.soundfilename = os.path.join(log_directory, '{}.wav'.format(dev_name))
         self.xrun_filename = os.path.join(log_directory, 'alsa_record_xruns.txt')
-
-        config = normalize_input_device(config)
-
-        self.buffer_size = config['BufferSize']
-        dtype = config['DType']
-        device = config['HWDevice']
-        self.fs = config['SamplingRate']
-        self.channels = config['NChannels']
 
         # Open alsa device
         self.adevice = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NORMAL, device=device)
@@ -290,6 +300,7 @@ class ALSARecordSystem():
         self.adevice.setchannels(self.channels) # We'll always record stereo audio TODO: support many channels
         self.adevice.setrate(self.fs)
         scale_factor = 4 # system fixed number of buffers
+
         if dtype == 'int16':
             self.adevice.setformat(alsaaudio.PCM_FORMAT_S16_LE)
             scale_factor = scale_factor*2
@@ -301,13 +312,8 @@ class ALSARecordSystem():
 
         self.adevice.setperiodsize(self.buffer_size)
 
-
         self.in_buf = np.zeros((self.buffer_size*scale_factor, self.channels), dtype=dtype, order='C')
-
         self.adevice.enable_timestamps()
-
-        self.logfilename = os.path.join(log_directory, '{}.wav.log'.format(dev_name))
-        self.soundfilename = os.path.join(log_directory, '{}.wav'.format(dev_name))
 
         print('Recording microphone input in: {}.\n'.format(self.soundfilename))
         print('\nALSA record configuration ' + '-'*10 + '\n')
@@ -317,15 +323,13 @@ class ALSARecordSystem():
         self.soundfile = None
         self.logfile = None
         self.xrun_logfile = None
-
         ######
 
     def __del__(self):
         if self.adevice:
             self.adevice.close()
 
-
-    def record(self):
+    def record(self):            
         print(time.time())
         with open(self.xrun_filename, 'w') as self.xrun_logfile, \
                 open(self.logfilename, 'w') as self.logfile, \
@@ -342,40 +346,6 @@ class ALSARecordSystem():
                     print('buffer underrun {}'.format(t), file=self.xrun_logfile)
 
 
-def normalize_output_device(config):
-    config['BufferSize'] = config.get('BufferSize', DEFAULT_OUTPUT_DEVICE['BufferSize'])
-    config['DType'] = config.get('DType', DEFAULT_OUTPUT_DEVICE['DType'])
-    config['Device'] = config.get('HWDevice', DEFAULT_OUTPUT_DEVICE['HWDevice'])
-    config['ChannelLabels'] = config.get('ChannelLabels', DEFAULT_OUTPUT_DEVICE['ChannelLabels'])
-    config['NChannels'] = config.get('NChannels', DEFAULT_OUTPUT_DEVICE['NChannels'])
-
-    return config
-
-
-def normalize_input_device(config):
-    config['BufferSize'] = config.get('BufferSize', DEFAULT_INPUT_DEVICE['BufferSize'])
-    config['DType'] = config.get('DType', DEFAULT_INPUT_DEVICE['DType'])
-    config['Device'] = config.get('HWDevice', DEFAULT_INPUT_DEVICE['HWDevice'])
-    config['SamplingRate'] = config.get('SamplingRate', DEFAULT_INPUT_DEVICE['SamplingRate'])
-    config['NChannels'] = config.get('NChannels', DEFAULT_INPUT_DEVICE['NChannels'])
-
-    return config
-
-
-def look_for_and_add_stimulus_defaults(config):
-    if 'Defaults' in config:
-        print('SoundStimulus: setting defaults.')
-        for stimulus_name, stimulus in config['StimuliList'].items(): 
-            print(' - ',stimulus_name)
-            for key, config_item in config['Defaults'].items():
-                if key not in stimulus:
-                    stimulus[key] = config_item
-                elif isinstance(config_item, dict):
-                    for subkey, sub_config_item in config_item.items():
-                        if subkey not in stimulus[key]:
-                            stimulus[key][subkey] = sub_config_item
-
-    return config['StimuliList']
 
 
 def sort_bundled_sounds(filelist):
@@ -388,3 +358,47 @@ def sort_bundled_sounds(filelist):
         return sorted(filelist, key=sort_key)
     except ValueError as error:
         raise error
+
+
+def main():
+    if len(sys.argv) > 1:
+        port = int(sys.argv[1])
+    else:
+        port = 7910
+
+    context = zmq.Context()
+    socket = context.socket(zmq.PAIR)
+    socket.connect("tcp://localhost:%s" % port)
+
+    exiting = False
+
+    playback = ALSAPlaybackSystem()
+
+    while not exiting:
+        msg = socket.recv()
+        commands = pickle.loads(msg)
+        print(commands)
+        if "Exit" in commands:
+            exiting = True
+        elif "ConfigDevice" in commands:
+            ret = playback.configure_device(commands)
+            if ret:
+                socket.send(b"ConfigSuccess")
+            else:
+                socket.send(b"ConfigFailure")
+        elif "LoadStimuli" in commands:
+            commands.pop("LoadStimuli")
+            print(commands)
+            ret = playback.load_stimuli(commands)
+            if ret:
+                socket.send(b"LoadSuccess")
+            else:
+                socket.send(b"LoadFailure")
+        elif "Run" in commands:
+            ret = playback.play(socket)
+            socket.send(b"Stopped")
+
+    socket.send(b"Exiting")
+
+if __name__ == '__main__':
+    main()
