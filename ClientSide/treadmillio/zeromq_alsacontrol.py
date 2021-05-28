@@ -14,8 +14,9 @@ socket.bind("tcp://*:%s" % port)
 
 config = {
     "ConfigDevice": True, 
-    "HWDevice": "hw:CARD=sofhdadsp,DEV=0",
-    "SamplingRate": 48000
+    "HWDevice": "hw:CARD=Device,DEV=0",
+    "SamplingRate": 48000,
+    'BufferSize': 64,
 }
 
 stimuli = {
@@ -43,6 +44,12 @@ if msg != b"Running":
 print('Sending volume')
 socket.send(pickle.dumps({"tonecloud":1.0}))
 time.sleep(5)
+print('Sending volume down')
+socket.send(pickle.dumps({"tonecloud":0.25}))
+time.sleep(5)
+print('Sending volume up')
+socket.send(pickle.dumps({"tonecloud":1.0}))
+time.sleep(5)
 socket.send(pickle.dumps({"Stop":True}))
 msg = socket.recv()
 print(msg)
@@ -56,6 +63,4 @@ if msg != b"Exiting":
 
 print("All done!")
 
-while True:
-    pass
 exit(0)
