@@ -267,6 +267,7 @@ class SoundStimulus():
             self.off_gain = stimulus_params['OffGain']
         else:
             self.off_gain = -90.0 
+            print('Offgain -90')
 
         # Set gain prior to playing sound
         self.gain = self.off_gain # NOTE: Is it easier to have sounds off initially?

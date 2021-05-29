@@ -59,9 +59,8 @@ with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
 # ------------------- Validate config file-------------------------------------------------------------
-from treadmillio.soundstimulus import validate_sound_config
-
 if 'AuditoryStimuli' in Config:
+    from treadmillio.soundstimulus import validate_sound_config
     validate_sound_config(Config['AuditoryStimuli'])
 
 # ------------------- Setup logging. ------------------------------------------------------------------
@@ -115,6 +114,7 @@ else:
     print('#'*80, '\n')
     print('Warning!!! Not logging!!!!')
     print('#'*80, '\n')
+    log_directory = None
 
 
 EnableSound = False
@@ -133,41 +133,34 @@ elif 'RandomSeed' in Config['Preferences']:
     print(f"Setting random seed to {Config['Preferences']['RandomSeed']}.")
 
 
-#----------------------- parameters --------------
-TrackTransform = None
-
-virtual_track_length = 1000.0 #cm
-d = 20.2 #cm
-encoder_gain = 4096.0
-if 'Maze' in Config:
-    if 'Length' in Config['Maze']:
-        virtual_track_length = Config['Maze']['Length'] #cm
-    if 'WheelDiameter' in Config['Maze']:
-        d = Config['Maze']['WheelDiameter'] #cm diameter of the physical wheel; 150cm
-    if 'EncoderGain' in Config['Maze']:
-        encoder_gain = Config['Maze']['EncoderGain']
-
-
-#----------------------- Sound stimuli --------------
-
-from treadmillio.soundstimulus import SoundStimulusController
-
 with ExitStack() as stack:
+    # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
+    from treadmillio.serialinterface import SerialInterface
+
+    if 'GPIO' in Config:
+        gpio_config = Config['GPIO']
+    else:
+        gpio_config = None
+        warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
+
+    if 'Maze' in Config:
+        maze_config = Config['Maze']
+    else:
+        maze_config = None
+
+    print(maze_config)
+
+    Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, gpio_config=gpio_config, maze_config=maze_config))
+
+    #----------------------- Sound stimuli --------------
     if 'AuditoryStimuli' in Config and EnableSound:
-        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length, log_directory))
+        from treadmillio.soundstimulus import SoundStimulusController
+        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], Interface.virtual_track_length, log_directory))
     else:
         SoundController = None
         if 'AuditoryStimuli' in Config:
             warnings.warn("Config file specified AuditoryStimuli, but EnableSound is False.", RuntimeWarning)
 
-    # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
-    from treadmillio import SerialInterface
-
-    if 'GPIO' in Config:
-        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=Config['GPIO']))
-    else:
-        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=None))
-        warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
 
     # ------------------- Read in State Machine States. ------------------------------------------------------------------
     if 'StateMachine' in Config:
@@ -255,8 +248,8 @@ with ExitStack() as stack:
 
     Interface.connect()
 
-    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-    initialUnwrappedencoder = UnwrappedEncoder
+    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data() # This will initialize encoder
+    # initialUnwrappedencoder = UnwrappedEncoder
     if DoLogCommands:
         log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0]) # Log the initial data from serial interface
 
@@ -287,20 +280,21 @@ with ExitStack() as stack:
             else:
                 StateMachine.update_statemachine(None) # update the state machine
 
-        unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
-        pos = unwrapped_pos % virtual_track_length
+        # unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
+        # pos = unwrapped_pos % virtual_track_length
 
-        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {pos}. Lap: {unwrapped_pos // virtual_track_length}')
+        if "Maze" in Config:
+            if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
+                print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {Interface.pos}. Lap: {Interface.unwrapped_pos // Interface.virtual_track_length}. Speed: {Interface.velocity}')
 
         if SoundController:
-            SoundController.update_localized(pos, unwrapped_pos) # update VR-position-dependent sounds
+            SoundController.update_localized(Interface.pos, Interface.unwrapped_pos) # update VR-position-dependent sounds
 
         if RewardZones:
             if DoLogCommands:
-                RewardZones.update_reward_zones(MasterTime, pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
+                RewardZones.update_reward_zones(MasterTime, Interface.pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
             else:
-                RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
+                RewardZones.update_reward_zones(MasterTime, Interface.pos, GPIO) # update any VR-position rewards
 
         if Profiling and DoLogCommands:
             exec_time = time.monotonic() - last_ts
