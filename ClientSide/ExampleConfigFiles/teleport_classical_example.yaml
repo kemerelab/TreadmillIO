@@ -95,14 +95,15 @@ AuditoryStimuli:
   Defaults:
     BaselineGain: 0.0 # Max gain for linear stimuli
     Modulation:
-      Type: Linear
+      Type: Natural
       CutoffGain: -20.0 #dB at cutoff
-      Width: 30 # cm
+      SpeakerDistance: 10 # cm (distance of speaker to track)
+      Width: 300 # cm
 
   StimuliList:
     BackgroundSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
-      BaselineGain: -6.0
+      BaselineGain: -90.0
       Filename: 'tone_cloud_short.wav'
       Color: 'pink' # Matplotlib color name used for visualization system
       Device: 'Speaker1' # or single device, or list of devices

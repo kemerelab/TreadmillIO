@@ -319,15 +319,17 @@ def pos_gain_linear_db(x, center, track_length, cutoff, off_gain, max_gain, slop
         return off_gain
     else:
         new_gain = max_gain - relpos*slope
+        return new_gain
 
 # @jit
-def pos_gain_physical(x, center, track_length, cutoff, off_gain, max_gain):
+def pos_gain_natural(x, center, track_length, cutoff, off_gain, max_gain, speaker_distance):
     x2 = track_length - x # this is the x wrapped around
     relpos = min(abs(center-x), abs(center-x2))
     if (relpos > cutoff):
         return off_gain
     else:
-        new_gain = max_gain - 20*math.log10(relpos)
+        new_gain = max_gain - 10*math.log10(relpos**2 + speaker_distance**2) + 20*math.log10(speaker_distance)
+        return new_gain
 
 
 
@@ -349,8 +351,9 @@ class LocalizedSound(SoundStimulus):
                                     self.trackLength, self.half, self.off_gain, self.maxGain, 
                                     (self.maxGain - self.minGain)/self.half)
         elif (stimulus_params['Modulation']['Type'] == 'Natural'):
-            self.pos_gain_function = lambda x : pos_gain_linear_db(x, self.center, 
-                                    self.trackLength, self.half, self.off_gain, self.maxGain)
+            self.pos_gain_function = lambda x : pos_gain_natural(x, self.center, 
+                                    self.trackLength, self.half, self.off_gain, self.maxGain,
+                                    stimulus_params['Modulation']['SpeakerDistance'])
         else:
             raise(ValueError("Unknown modulation function in soundstimulus {}".format(stimulus_params['Modulation']['Type'])))
 
