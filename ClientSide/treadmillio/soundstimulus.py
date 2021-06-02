@@ -21,10 +21,10 @@ from .alsainterface import sort_bundled_sounds
 import cProfile
 
 import math
+import numba
 
 def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
-
 
 def run_playback_process(device_name, config, file_dir, control_pipe, log_directory, status_queue):
     status_queue.put(1)
@@ -309,6 +309,28 @@ class SoundStimulus():
 
         return True, None
 
+
+
+# @jit
+def pos_gain_linear_db(x, center, track_length, cutoff, off_gain, max_gain, slope):
+    x2 = track_length - x # this is the x wrapped around
+    relpos = min(abs(center-x), abs(center-x2))
+    if (relpos > cutoff):
+        return off_gain
+    else:
+        new_gain = max_gain - relpos*slope
+
+# @jit
+def pos_gain_physical(x, center, track_length, cutoff, off_gain, max_gain):
+    x2 = track_length - x # this is the x wrapped around
+    relpos = min(abs(center-x), abs(center-x2))
+    if (relpos > cutoff):
+        return off_gain
+    else:
+        new_gain = max_gain - 20*math.log10(relpos)
+
+
+
 class LocalizedSound(SoundStimulus):
     def __init__(self, track_length, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
         SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
@@ -321,6 +343,16 @@ class LocalizedSound(SoundStimulus):
         self.trackLength = track_length
         self.maxGain = self.baseline_gain
         self.minGain = stimulus_params['Modulation']['CutoffGain']
+
+        if (stimulus_params['Modulation']['Type'] == 'Linear'):
+            self.pos_gain_function = lambda x : pos_gain_linear_db(x, self.center, 
+                                    self.trackLength, self.half, self.off_gain, self.maxGain, 
+                                    (self.maxGain - self.minGain)/self.half)
+        elif (stimulus_params['Modulation']['Type'] == 'Natural'):
+            self.pos_gain_function = lambda x : pos_gain_linear_db(x, self.center, 
+                                    self.trackLength, self.half, self.off_gain, self.maxGain)
+        else:
+            raise(ValueError("Unknown modulation function in soundstimulus {}".format(stimulus_params['Modulation']['Type'])))
 
         if 'MultilapActiveZone' in stimulus_params['Modulation']:
             b = stimulus_params['Modulation']['MultilapActiveZone']
@@ -335,27 +367,8 @@ class LocalizedSound(SoundStimulus):
         else:
             self.multilap_bounds = None
 
-    def linear_gain_from_pos(self, pos):
-        relpos = (pos - self.center) % self.trackLength
-        if (relpos  > self.trackLength / 2):
-            relpos = relpos - self.trackLength
-        elif (relpos < -self.trackLength / 2):
-            relpos = relpos + self.trackLength
-        if (abs(relpos) > self.half):
-            return self.off_gain
-        else:
-            return (1 - abs(relpos/self.half)) * (self.maxGain - self.minGain) + self.minGain
-
     def pos_update_gain(self, pos, unwrapped_pos):
-        relpos = (pos - self.center) % self.trackLength
-        if (relpos  > self.trackLength / 2):
-            relpos = relpos - self.trackLength
-        elif (relpos < -self.trackLength / 2):
-            relpos = relpos + self.trackLength
-        if (abs(relpos) > self.half):
-            new_gain = self.off_gain
-        else:
-            new_gain = (1 - abs(relpos/self.half)) * (self.maxGain - self.minGain) + self.minGain
+        new_gain = self.pos_gain_function(pos)
 
         if self.multilap_bounds:
             if (unwrapped_pos <= self.multilap_bounds[0]) and (self.multilap_state =='waiting'):
