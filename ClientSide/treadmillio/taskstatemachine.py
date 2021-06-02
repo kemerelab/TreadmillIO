@@ -1065,8 +1065,7 @@ class TaskStateMachine():
                 set_internal[state_name] = state
 
             else:
-                raise(NotImplementedError("State machine elements other than "
-                                          "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
+                raise(NotImplementedError("Unknown state machine element {}".format(state['Type']))
 
         for state_name, state in set_internal.items(): # avoids KeyError if state not yet added
             # NOTE: Is it better to parse State parameter here, 

@@ -32,11 +32,16 @@ Maze:
 
 StateMachine:
   States:
+    InitialState:
+      Type: 'SetPosition'
+      Params:
+        Position: 40
+      NextState: 'StartOfMaze'
     StartOfMaze:
       Type: 'SetSoundState'
       Params:
         BackgroundSound: 'On'
-      NextState: 'WaitingForRewardZone'
+      NextState: 'RestartMovement'
     RestartMovement:
       Type: 'LockPosition'
       Params:
@@ -47,15 +52,20 @@ StateMachine:
       NextState:
         FreezeMovement:
           ConditionType: 'Position'
-          Threshold: 240
+          Threshold: 280
           Direction: '>='
     FreezeMovement:
       Type: 'LockPosition'
       Params:
         LockState: True
+      NextState: 'DoTeleport'
+    DoTeleport:
+      Type: 'SetPosition'
+      Params:
+        Position: 40
       NextState: 'RewardPumpState'
     RewardPumpState:
-      Type: 'SetGPIOState'
+      Type: 'SetGPIO'
       Params:
         Pin: 'Reward'
         Value: 1
@@ -64,25 +74,19 @@ StateMachine:
           ConditionType: 'ElapsedTime'
           Duration: 100
     RewardPumpOffState:
-      Type: 'SetGPIOState'
+      Type: 'SetGPIO'
       Params:
         Pin: 'Reward'
         Value: 0
-      NextState: EndOfLapSilence
+      NextState: 'EndOfLapSilence'
     EndOfLapSilence:
       Type: 'SetSoundState'
       Params:
         BackgroundSound: 'Off'
       NextState:
-        DoTeleport:
+        StartOfMaze:
           ConditionType: 'ElapsedTime'
           Duration: 2500
-          Priority: 1
-    DoTeleport:
-      Type: 'SetPosition'
-      Params:
-        Position: 0
-      NextState: 'StartMovement'
 
 
 AuditoryStimuli:
@@ -104,25 +108,25 @@ AuditoryStimuli:
       Device: 'Speaker1' # or single device, or list of devices
     Zone_A:
       Type: 'Localized'
-      CenterPosition: 30 
+      CenterPosition: 70 
       Filename: 'tone_4kHz.wav'
       Color: 'lime'
       Device: 'Speaker1' # or single device, or list of devices
     Zone_B1:
       Type: 'Localized'
-      CenterPosition: 90 
+      CenterPosition: 130 
       Filename: 'tone_9kHz.wav'
       Color: 'lime'
       Device: 'Speaker1' # or single device, or list of devices
     Zone_C:
       Type: 'Localized'
-      CenterPosition: 150 
+      CenterPosition: 190 
       Filename: 'tone_17kHz.wav'
       Color: 'lime'
       Device: 'Speaker1' # or single device, or list of devices
     Zone_B2:
       Type: 'Localized'
-      CenterPosition: 210 
+      CenterPosition: 250 
       Filename: 'tone_9kHz.wav'
       Color: 'lime'
       Device: 'Speaker1' # or single device, or list of devices

@@ -155,9 +155,10 @@ class SerialInterface():
                 diff_encoder = new_unwrapped_encoder - self.unwrapped_encoder
                 if not self.block_movement:
                     instantaneous_velocity = diff_encoder * self.diameter_constant
-                    self.velocity = self._smooth(instantaneous_velocity) * 500
+                    self.velocity = self._smooth(instantaneous_velocity) * 500 # TODO - make a parameter
                     self.unwrapped_pos = self.unwrapped_pos + instantaneous_velocity
-                    self.pos = self.unwrapped_pos % self.virtual_track_length
+                    # self.pos = self.unwrapped_pos % self.virtual_track_length
+                    self.pos = (self.pos + instantaneous_velocity) % self.virtual_track_length
                 else:
                     # instantaneous_velocity  = 0
                     # self.unwrapped_pos = self.unwrapped_pos
