@@ -313,8 +313,8 @@ class SoundStimulus():
 
 # @jit
 def pos_gain_linear_db(x, center, track_length, cutoff, off_gain, max_gain, slope):
-    x2 = track_length - x # this is the x wrapped around
-    relpos = min(abs(center-x), abs(center-x2))
+    d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
+    relpos = min(d, track_length - d) # account for wrapping around track
     if (relpos > cutoff):
         return off_gain
     else:
@@ -323,8 +323,8 @@ def pos_gain_linear_db(x, center, track_length, cutoff, off_gain, max_gain, slop
 
 # @jit
 def pos_gain_natural(x, center, track_length, cutoff, off_gain, max_gain, speaker_distance):
-    x2 = track_length - x # this is the x wrapped around
-    relpos = min(abs(center-x), abs(center-x2))
+    d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
+    relpos = min(d, track_length - d) # account for wrapping around track
     if (relpos > cutoff):
         return off_gain
     else:
