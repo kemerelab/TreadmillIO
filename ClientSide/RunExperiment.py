@@ -64,9 +64,7 @@ if 'AuditoryStimuli' in Config:
     validate_sound_config(Config['AuditoryStimuli'])
 
 # ------------------- Setup logging. ------------------------------------------------------------------
-DoLogCommands = True
-if 'LogCommands' in Config['Preferences']:
-    DoLogCommands = Config['Preferences']['LogCommands']
+DoLogCommands = Config['Preferences'].get('LogCommands', True)
 
 if DoLogCommands:
     auto_log_directory = Config['Preferences'].get('AutoLogDirectory', True) if 'Preferences' in Config else True
@@ -109,17 +107,13 @@ if DoLogCommands:
             os.removedirs(log_directory)
             exit(0)
 
-
 else:
     print('#'*80, '\n')
     print('Warning!!! Not logging!!!!')
     print('#'*80, '\n')
     log_directory = None
 
-
-EnableSound = False
-if 'EnableSound' in Config['Preferences']:
-    EnableSound = Config['Preferences']['EnableSound']
+EnableSound = Config['Preferences'].get('EnableSound', False)
 
 # Check for random seed on command line or in preferences
 if args.random_seed is not None:
@@ -137,18 +131,11 @@ with ExitStack() as stack:
     # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
     from treadmillio.serialinterface import SerialInterface
 
-    if 'GPIO' in Config:
-        gpio_config = Config['GPIO']
-    else:
-        gpio_config = None
+    gpio_config = Config.get('GPIO', None)
+    if not gpio_config:
         warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
 
-    if 'Maze' in Config:
-        maze_config = Config['Maze']
-    else:
-        maze_config = None
-
-    print(maze_config)
+    maze_config = Config.get('Maze', None)
 
     Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, gpio_config=gpio_config, maze_config=maze_config))
 
@@ -224,7 +211,6 @@ with ExitStack() as stack:
             execution_log = stack.enter_context(open(os.path.join(log_directory, 'execution.csv'), 'w', newline=''))
             execution_writer = csv.writer(execution_log)
 
-
     # ------------------- Webcam Video Recording. ------------------------------------------------------------------
     if 'Cameras' in Config:
         from treadmillio.uvccam.uvccam import RunCameraInterface
@@ -299,10 +285,6 @@ with ExitStack() as stack:
         if Profiling and DoLogCommands:
             exec_time = time.monotonic() - last_ts
             execution_writer.writerow([exec_time])
-
-
-
-
 
 
 
