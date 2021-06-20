@@ -68,7 +68,7 @@ def run_record_process(device_name, config, log_directory, status_queue):
 
 
 class SoundStimulusController():
-    def __init__(self, sound_config, track_length=None, log_directory=None, verbose=0):
+    def __init__(self, sound_config, track_length=None, track_topology='Ring', log_directory=None, verbose=0):
 
         self.valid = False
         # TODO: Handle pipes for multiple audio devices
@@ -133,7 +133,7 @@ class SoundStimulusController():
         for stimulus_name, stimulus in StimuliList.items():
             if verbose > 1:
                 print('Adding stimulus {}...'.format(stimulus_name))
-            self.add_stimulus(stimulus_name, stimulus, track_length, verbose)
+            self.add_stimulus(stimulus_name, stimulus, track_length, track_topology, verbose)
 
         # Add viewer
         if sound_config.get('Viewer', False):
@@ -145,7 +145,7 @@ class SoundStimulusController():
 
         self.valid = True # we won't be valid unless we made it here.
 
-    def add_stimulus(self, stimulus_name, stimulus, track_length=None, verbose=0):
+    def add_stimulus(self, stimulus_name, stimulus, track_length, track_topology, verbose=0):
         # Add to type-specific mapping
         stimulus['Name'] = stimulus_name
         if stimulus['Type'] == 'Background':
@@ -162,11 +162,13 @@ class SoundStimulusController():
             # visualization.add_zone_position(stimulus['CenterPosition'] - stimulus['Modulation']['Width']/2, 
             #                     stimulus['CenterPosition'] + stimulus['Modulation']['Width']/2, 
             #                     fillcolor=stimulus['Color'])
-            new_stimulus = LocalizedSound(track_length, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
+            new_stimulus = LocalizedSound(track_length, track_topology, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
         elif stimulus['Type'] == 'MultilapBackground':
             if not track_length:
                 raise(ValueError('SoundStimulus: Illegal to define a "MultilapBackgroundSound" sound without defining the Maze->Length.'))
+            if track_topology != 'Ring':
+                raise(Warning('SoundStimulus: Unlikely that MultilapBackground" will work as expected with non-Ring topology.'))
             # visualization.add_zone_position(??? , ???, fillcolor=stimulus['Color'])
             new_stimulus = MultilapBackgroundSound(track_length, stimulus_name, stimulus, self.alsa_playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
@@ -312,7 +314,7 @@ class SoundStimulus():
 
 
 # @jit
-def pos_gain_linear_db(x, center, track_length, cutoff, off_gain, max_gain, slope):
+def pos_gain_linear_db_ring(x, center, track_length, cutoff, off_gain, max_gain, slope):
     d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
     relpos = min(d, track_length - d) # account for wrapping around track
     if (relpos > cutoff):
@@ -321,10 +323,26 @@ def pos_gain_linear_db(x, center, track_length, cutoff, off_gain, max_gain, slop
         new_gain = max_gain - relpos*slope
         return new_gain
 
-# @jit
-def pos_gain_natural(x, center, track_length, cutoff, off_gain, max_gain, speaker_distance):
+def pos_gain_linear_db_straight(x, center, track_length, cutoff, off_gain, max_gain, slope):
     d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
-    relpos = min(d, track_length - d) # account for wrapping around track
+    if (relpos > cutoff):
+        return off_gain
+    else:
+        new_gain = max_gain - relpos*slope
+        return new_gain
+
+# @jit
+def pos_gain_natural_ring(x, center, track_length, cutoff, off_gain, max_gain, speaker_distance):
+    d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
+    relpos = min(d, track_length - d) # account for wrapping around track # TODO - NEED TO AMMEND FOR LINEAR_TRACK_UPDATE
+    if (relpos > cutoff):
+        return off_gain
+    else:
+        new_gain = max_gain - 10*math.log10(relpos**2 + speaker_distance**2) + 20*math.log10(speaker_distance)
+        return new_gain
+
+def pos_gain_natural_straight(x, center, track_length, cutoff, off_gain, max_gain, speaker_distance):
+    d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
     if (relpos > cutoff):
         return off_gain
     else:
@@ -334,7 +352,7 @@ def pos_gain_natural(x, center, track_length, cutoff, off_gain, max_gain, speake
 
 
 class LocalizedSound(SoundStimulus):
-    def __init__(self, track_length, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
+    def __init__(self, track_length, track_topology, stimulus_name, stimulus_params, alsa_playback_pipe, verbose):
         SoundStimulus.__init__(self, stimulus_name, stimulus_params, alsa_playback_pipe, verbose)
 
         # TODO check that these are all set. I need to know my name in order to give
@@ -347,13 +365,29 @@ class LocalizedSound(SoundStimulus):
         self.minGain = stimulus_params['Modulation']['CutoffGain']
 
         if (stimulus_params['Modulation']['Type'] == 'Linear'):
-            self.pos_gain_function = lambda x : pos_gain_linear_db(x, self.center, 
-                                    self.trackLength, self.half, self.off_gain, self.maxGain, 
-                                    (self.maxGain - self.minGain)/self.half)
+            if track_topology == 'Ring':
+                self.pos_gain_function = lambda x : pos_gain_linear_db_ring(x, self.center, 
+                                        self.trackLength, self.half, self.off_gain, self.maxGain, 
+                                        (self.maxGain - self.minGain)/self.half)
+            elif track_topology == 'Line':
+                self.pos_gain_function = lambda x : pos_gain_linear_db_straight(x, self.center, 
+                                        self.trackLength, self.half, self.off_gain, self.maxGain, 
+                                        (self.maxGain - self.minGain)/self.half)
+            else:
+                raise(ValueError('LocalizedSound: Unsupported track topology {}. "Ring" or "Line" currently supported.'.format(track_topology)))
+
         elif (stimulus_params['Modulation']['Type'] == 'Natural'):
-            self.pos_gain_function = lambda x : pos_gain_natural(x, self.center, 
-                                    self.trackLength, self.half, self.off_gain, self.maxGain,
-                                    stimulus_params['Modulation']['SpeakerDistance'])
+            if track_topology == 'Ring':
+                self.pos_gain_function = lambda x : pos_gain_natural_ring(x, self.center, 
+                                        self.trackLength, self.half, self.off_gain, self.maxGain,
+                                        stimulus_params['Modulation']['SpeakerDistance'])
+            if track_topology == 'Line':
+                self.pos_gain_function = lambda x : pos_gain_natural_straight(x, self.center, 
+                                        self.trackLength, self.half, self.off_gain, self.maxGain,
+                                        stimulus_params['Modulation']['SpeakerDistance'])
+            else:
+                raise(ValueError('LocalizedSound: Unsupported track topology {}. "Ring" or "Line" currently supported.'.format(track_topology)))
+
         else:
             raise(ValueError("Unknown modulation function in soundstimulus {}".format(stimulus_params['Modulation']['Type'])))
 

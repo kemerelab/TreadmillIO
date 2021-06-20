@@ -41,21 +41,23 @@ class SerialInterface():
             self.reinitialize = True
             self.block_movement = False
 
+            self.unwrapped_encoder = 0
+            self.initial_encoder = 0
             self.pos = 0
             self.unwrapped_pos = 0
-            self.unwrapped_encoder = 0
 
-            self.virtual_track_length = 1000.0 #cm
-            self.d = 20.2 #cm
-            self.encoder_gain = 4096.0
-            if 'Length' in maze_config:
-                self.virtual_track_length = maze_config['Length'] #cm
-            if 'WheelDiameter' in maze_config:
-                self.d = maze_config['WheelDiameter'] #cm diameter of the physical wheel; 150cm
-            if 'EncoderGain' in maze_config:
-                self.encoder_gain = maze_config['EncoderGain']
+            self.virtual_track_length = maze_config.get('Length', 1000.0) #cm
+            self.d = maze_config.get('WheelDiameter', 20.2) #cm
+            self.encoder_gain = maze_config.get('EncoderGain', 4096.0)
             self.diameter_constant = pi * self.d / self.encoder_gain
-            self.initial_encoder = 0
+
+            self.maze_topology = maze_config.get('Topology', 'Ring')
+            if self.maze_topology == 'Ring':
+                self.maze_topology_fun = lambda x: x % self.virtual_track_length
+            elif self.maze_topology == 'Line':
+                self.maze_topology_fun = lambda x: min(max(x, 0), self.virtual_track_length)
+            else:
+                raise(ValueError("Unknown Maze Topology {}. Currently implemented: 'Ring' or 'Line'.".format(self.maze_topology)))
 
             smoothing_window_length = 50
             self._smoothing_data = np.zeros(smoothing_window_length) # 50 samples at 500 Hz is 0.1 s
@@ -157,8 +159,8 @@ class SerialInterface():
                     instantaneous_velocity = diff_encoder * self.diameter_constant
                     self.velocity = self._smooth(instantaneous_velocity) * 500 # TODO - make a parameter
                     self.unwrapped_pos = self.unwrapped_pos + instantaneous_velocity
-                    # self.pos = self.unwrapped_pos % self.virtual_track_length
-                    self.pos = (self.pos + instantaneous_velocity) % self.virtual_track_length
+
+                    self.pos = self.maze_topology_fun(self.pos + instantaneous_velocity) # depending on topology will either wrap or force between 0/track_length
                 else:
                     # instantaneous_velocity  = 0
                     # self.unwrapped_pos = self.unwrapped_pos
