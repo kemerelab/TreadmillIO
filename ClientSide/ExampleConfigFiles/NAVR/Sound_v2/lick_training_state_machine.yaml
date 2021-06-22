@@ -1,10 +1,11 @@
+
 # This config file is defined to allow us to initially train mice that we want them
 #  to (1) walk/run on the wheel and (2) lick for reward. The implementation just requires
 #  them to run 40 cm, at which point the reward is triggered and the sound is turned off
 #  for 2.5 s.
 
 Info: # "Info" configuration options can be overridden by command line options
-  MouseID: V1A1 # Used to name saved data file
+  MouseID: V2A1 # Used to name saved data file
   Note: '' # Added in a block at the start of saved data file
   Session: '' # This is added to default (date and time)
   TaskType: Initial Run Lick Classical Training
@@ -34,6 +35,7 @@ Maze:
   Length: 50.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
   WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
   TrackTransform: None # Not currently implemented.
+  Topology: 'Line' # Ring or Line. Line doesn't wrap position
 
 StateMachine:
   States:
