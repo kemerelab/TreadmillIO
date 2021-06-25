@@ -31,7 +31,7 @@ GPIO: # A list of GPIO pins used in the task
 Maze:
   Type: 'VR' # VR or physical
   EncoderGain: 8192.0 # Encoder value per revolution
-  Length: 40.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
+  Length: 400.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
   WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
   TrackTransform: None # Not currently implemented.
   Topology: 'Line' # Ring or Line. Line doesn't wrap position
@@ -58,7 +58,7 @@ StateMachine:
       NextState:
         FreezeMovement:
           ConditionType: 'Position'
-          Threshold: 40
+          Threshold: 400
           Direction: '>='
     FreezeMovement:
       Type: 'LockPosition'
