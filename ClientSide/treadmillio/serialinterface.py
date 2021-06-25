@@ -154,13 +154,13 @@ class SerialInterface():
 
         if self.calculate_position or (not self.reinitialize):
             if not self.reinitialize:
-                diff_encoder = new_unwrapped_encoder - self.unwrapped_encoder
+                diff_encoder = new_unwrapped_encoder - self.unwrapped_encoder # instantaneous velocity in angle (encoder units)
                 if not self.block_movement:
-                    instantaneous_velocity = diff_encoder * self.diameter_constant
-                    self.velocity = self._smooth(instantaneous_velocity) * 500 # TODO - make a parameter
-                    self.unwrapped_pos = self.unwrapped_pos + instantaneous_velocity
+                    change_in_position = diff_encoder * self.diameter_constant # convert velocity to cm per time step
+                    self.velocity = self._smooth(change_in_position) * 500 # 500 = Hz samples per second TODO - make a parameter
+                    self.unwrapped_pos = self.unwrapped_pos + change_in_position # TODO - why do we need unwrapped_pos anymore???
 
-                    self.pos = self.maze_topology_fun(self.pos + instantaneous_velocity) # depending on topology will either wrap or force between 0/track_length
+                    self.pos = self.maze_topology_fun(self.pos + change_in_position) # depending on topology will either wrap or force between 0/track_length
                 else:
                     # instantaneous_velocity  = 0
                     # self.unwrapped_pos = self.unwrapped_pos

@@ -27,7 +27,7 @@ import warnings
 from contextlib import ExitStack
 
 
-NamedVersion = '1.1'
+NamedVersion = '1.2'
 Profiling = False
 
 
@@ -237,7 +237,7 @@ with ExitStack() as stack:
     FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data() # This will initialize encoder
     # initialUnwrappedencoder = UnwrappedEncoder
     if DoLogCommands:
-        log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0]) # Log the initial data from serial interface
+        log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0, 0, 0]) # Log the initial data from serial interface
 
     if SoundController:
         SoundController.start_capture() # TODO: This doesn't currently do anything
@@ -252,7 +252,7 @@ with ExitStack() as stack:
                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
         if DoLogCommands:
-            log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
+            log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts, Interface.pos, Interface.velocity]) # Log data from serial interface
 
         # -------------------- Updates -------------------- 
         Interface.update_pulses() # lower any outstanding GPIO pulses
