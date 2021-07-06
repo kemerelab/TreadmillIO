@@ -137,7 +137,11 @@ with ExitStack() as stack:
 
     maze_config = Config.get('Maze', None)
 
-    Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, gpio_config=gpio_config, maze_config=maze_config))
+    if 'Preferences' in Config:
+        zmq_streaming = Config['Preferences'].get('DataStreamingPort', None)
+    
+    Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, gpio_config=gpio_config, 
+                                                    maze_config=maze_config, zmq_streaming=zmq_streaming))
 
     #----------------------- Sound stimuli --------------
     if 'AuditoryStimuli' in Config and EnableSound:

@@ -8,9 +8,10 @@ import warnings
 import traceback as tb
 from numpy import pi
 import numpy as np
+import zmq
 
 class SerialInterface():
-    def __init__(self, SerialPort='/dev/ttyS0', version=2, gpio_config=None, maze_config=None):
+    def __init__(self, SerialPort='/dev/ttyS0', version=2, gpio_config=None, maze_config=None, zmq_streaming=None):
         self.serial = None
         self.version = version
         self.serialPort = SerialPort
@@ -65,6 +66,15 @@ class SerialInterface():
             self.velocity = 0
         else:
             self.virtual_track_length = 1000.0 #cm
+
+        # We will use the ZMQ PUB/SUB architecture to stream position data
+        if zmq_streaming:
+            port = zmq_streaming
+            context = zmq.Context()
+            self.data_socket = context.socket(zmq.PUB)
+            self.data_socket.bind("tcp://*:%s" % port)
+        else:
+            self.data_socket = None
 
 
     def __enter__(self):
@@ -178,6 +188,9 @@ class SerialInterface():
                 
         else:
             self.unwrapped_encoder = new_unwrapped_encoder
+
+        if self.data_socket:
+            self.data_socket.send(struct.pack('<Ld', self.MasterTime, self.pos))
 
         # self.AuxGPIO will be None for version 1 interfaces
         return StartChar, StructSize, self.MasterTime, self.Encoder, self.unwrapped_encoder, self.GPIO, self.AuxGPIO
