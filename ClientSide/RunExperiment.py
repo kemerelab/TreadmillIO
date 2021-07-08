@@ -238,16 +238,15 @@ with ExitStack() as stack:
 
     Interface.connect()
 
-    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data() # This will initialize encoder
-    # initialUnwrappedencoder = UnwrappedEncoder
-    if DoLogCommands:
-        log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0, 0, 0]) # Log the initial data from serial interface
+    FlagChar, StructSize, MasterTime, InitialEncoder, InitialUnwrappedEncoder, InitialGPIO, AuxGPIO = Interface.read_data() # This will initialize encoder
 
     if SoundController:
         SoundController.start_capture() # TODO: This doesn't currently do anything
 
     if StateMachine:
         StateMachine.start(MasterTime)
+
+    first_sample = True
 
     while(True):
         ## every 2 ms happens:
@@ -256,7 +255,13 @@ with ExitStack() as stack:
                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
         if DoLogCommands:
-            log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts, Interface.pos, Interface.velocity]) # Log data from serial interface
+            if not first_sample:
+                log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts, Interface.pos, Interface.velocity]) # Log data from serial interface
+            else: # for ths first sample, to synchronize to a meaningful clock, we the CLOCK_REALTIME time, in the first row 
+                sys_ts = time.time()
+                log_writer.writerow([0, InitialGPIO, InitialEncoder, UnwrappedEncoder, sys_ts, 0, 0]) 
+                log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts, Interface.pos, Interface.velocity])
+                first_sample = False
 
         # -------------------- Updates -------------------- 
         Interface.update_pulses() # lower any outstanding GPIO pulses
