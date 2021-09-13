@@ -51,7 +51,7 @@ For some odd reason, the pupil-labs version of libuvc fails for camera resolutio
 `git clone https://github.com/kemerelab/TreadmillIO`
 
 Install further dependencies:
-`pip3 install zmq pyserial soundfile gitpython` (for main code)
+`pip3 install pyyaml zmq pyserial soundfile gitpython` (for main code)
 
 `pip3 install cython setproctitle scikit-video pyglet` (for uvc camera interface)
 
