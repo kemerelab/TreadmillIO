@@ -1,11 +1,17 @@
 
+from inspect import unwrap
+from re import I
+from numpy.lib.function_base import _unwrap_dispatcher
 import serial
 import struct
 import warnings
 import traceback as tb
+from numpy import pi
+import numpy as np
+import zmq
 
 class SerialInterface():
-    def __init__(self, SerialPort='/dev/ttyS0', version=2, config=None):
+    def __init__(self, SerialPort='/dev/ttyS0', version=2, gpio_config=None, maze_config=None, zmq_streaming=None):
         self.serial = None
         self.version = version
         self.serialPort = SerialPort
@@ -16,7 +22,7 @@ class SerialInterface():
 
         self.MasterTime = 0
         self.Encoder = 0
-        self.UnwrappedEncoder = 0
+        self.unwrapped_encoder = 0
         self.GPIO = None
         self.AuxGPIO = None
 
@@ -26,9 +32,49 @@ class SerialInterface():
             self.GPIO_state = int(0) # b'\x00'
             self.OutputPinMask = int(0)
             
-        if config is not None:
-            for gpio_label, gpio_config in config.items():
+        if gpio_config is not None:
+            for gpio_label, gpio_config in gpio_config.items():
                 self.add_gpio(gpio_label, gpio_config)
+
+        self.calculate_position = False
+        if maze_config is not None:
+            self.calculate_position = True
+            self.reinitialize = True
+            self.block_movement = False
+
+            self.unwrapped_encoder = 0
+            self.initial_encoder = 0
+            self.pos = 0
+            self.unwrapped_pos = 0
+
+            self.virtual_track_length = maze_config.get('Length', 1000.0) #cm
+            self.d = maze_config.get('WheelDiameter', 20.2) #cm
+            self.encoder_gain = maze_config.get('EncoderGain', 4096.0)
+            self.diameter_constant = pi * self.d / self.encoder_gain
+
+            self.maze_topology = maze_config.get('Topology', 'Ring')
+            if self.maze_topology == 'Ring':
+                self.maze_topology_fun = lambda x: x % self.virtual_track_length
+            elif self.maze_topology == 'Line':
+                self.maze_topology_fun = lambda x: min(max(x, 0), self.virtual_track_length)
+            else:
+                raise(ValueError("Unknown Maze Topology {}. Currently implemented: 'Ring' or 'Line'.".format(self.maze_topology)))
+
+            smoothing_window_length = 50
+            self._smoothing_data = np.zeros(smoothing_window_length) # 50 samples at 500 Hz is 0.1 s
+            self._smoothing_idx = 0
+            self.velocity = 0
+        else:
+            self.virtual_track_length = 1000.0 #cm
+
+        # We will use the ZMQ PUB/SUB architecture to stream position data
+        if zmq_streaming:
+            port = zmq_streaming
+            context = zmq.Context()
+            self.data_socket = context.socket(zmq.PUB)
+            self.data_socket.bind("tcp://*:%s" % port)
+        else:
+            self.data_socket = None
 
 
     def __enter__(self):
@@ -103,12 +149,12 @@ class SerialInterface():
         assert(len(x)==self.MessageLen)
 
         if (self.version==1):
-            StartChar, StructSize, self.MasterTime, self.Encoder, self.UnwrappedEncoder, \
+            StartChar, StructSize, self.MasterTime, self.Encoder, new_unwrapped_encoder, \
                     self.GPIO  = struct.unpack('<cBLhlBx', x)
             assert(StartChar == self.startChar)
 
         elif (self.version==2):
-            StartChar, StructSize, self.MasterTime, self.Encoder, self.UnwrappedEncoder, \
+            StartChar, StructSize, self.MasterTime, self.Encoder, new_unwrapped_encoder, \
                     self.GPIO, self.AuxGPIO  = struct.unpack('<cBLhlHHx', x)
             assert(StartChar == self.startChar)
             self.GPIO_state = (self.GPIO_state & self.OutputPinMask) + (self.GPIO & ~self.OutputPinMask)
@@ -116,8 +162,38 @@ class SerialInterface():
                 self.latency = self.latency + 1
                 #print(f'Difference between expected and actual GPIO {self.GPIO_state:#0b} {GPIO:#0b}')
 
+        if self.calculate_position or (not self.reinitialize):
+            if not self.reinitialize:
+                diff_encoder = new_unwrapped_encoder - self.unwrapped_encoder # instantaneous velocity in angle (encoder units)
+                if not self.block_movement:
+                    change_in_position = diff_encoder * self.diameter_constant # convert velocity to cm per time step
+                    self.velocity = self._smooth(change_in_position) * 500 # 500 = Hz samples per second TODO - make a parameter
+                    self.unwrapped_pos = self.unwrapped_pos + change_in_position # TODO - why do we need unwrapped_pos anymore???
+
+                    self.pos = self.maze_topology_fun(self.pos + change_in_position) # depending on topology will either wrap or force between 0/track_length
+                else:
+                    # instantaneous_velocity  = 0
+                    # self.unwrapped_pos = self.unwrapped_pos
+                    # self.pos = self.pos
+                    pass
+
+                self.unwrapped_encoder = new_unwrapped_encoder # update this either way to keep track
+
+            else:
+                self.unwrapped_pos = 0
+                self.pos = 0
+                self.unwrapped_encoder = new_unwrapped_encoder
+                self.reinitialize = False
+                self.velocity = 0
+                
+        else:
+            self.unwrapped_encoder = new_unwrapped_encoder
+
+        if self.data_socket:
+            self.data_socket.send(struct.pack('<Ld', self.MasterTime, self.pos))
+
         # self.AuxGPIO will be None for version 1 interfaces
-        return StartChar, StructSize, self.MasterTime, self.Encoder, self.UnwrappedEncoder, self.GPIO, self.AuxGPIO
+        return StartChar, StructSize, self.MasterTime, self.Encoder, self.unwrapped_encoder, self.GPIO, self.AuxGPIO
 
     def check_latency():
         latency = self.latency
@@ -260,3 +336,9 @@ class SerialInterface():
         self.GPIOs[GPIO]['IsPulsed'] = True
         self.GPIOs[GPIO]['PulseOffTime'] = off_time
         
+
+    def _smooth(self, instantaneous_v):
+        # Simple moving average filter
+        self._smoothing_data[self._smoothing_idx] = instantaneous_v
+        self._smoothing_idx = (self._smoothing_idx + 1) % self._smoothing_data.shape[0]
+        return self._smoothing_data.mean()

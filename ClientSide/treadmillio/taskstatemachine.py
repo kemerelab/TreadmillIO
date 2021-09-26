@@ -5,6 +5,7 @@ import warnings
 import zmq
 import random
 import pickle
+import operator
 
 class StateTransitionCondition:
     def __init__(self, label, state_config, io_interface):
@@ -14,6 +15,17 @@ class StateTransitionCondition:
         # test if the condtion defined by this object is current true or false
         pass
 
+def get_operator(direction):
+    if direction == '>':
+        return operator.gt
+    elif direction == '>=':
+        return operator.ge
+    elif direction == '<':
+        return operator.lt
+    elif direction == '<=':
+        return operator.le
+    else:
+        raise(ValueError("Trying to interpret a conditional transition, but direction {} is not supported").format(direction))
 
 
 class TaskState:
@@ -90,6 +102,14 @@ class TaskState:
                     elif params['ConditionType'] == 'GPIO':
                         self.next_state[state_name]['Pin'] = params['Pin'] # this will error if its not specified
                         self.next_state[state_name]['Value'] = params['Value'] # this will error if its not specified
+                    elif params['ConditionType'] == 'Speed':
+                        self.next_state[state_name]['Threshold'] = params['Threshold']
+                        self.next_state[state_name]['Direction'] = params['Direction']
+                        self.next_state[state_name]['Operator'] = get_operator(params['Direction'])
+                    elif params['ConditionType'] == 'Position':
+                        self.next_state[state_name]['Threshold'] = params['Threshold']
+                        self.next_state[state_name]['Direction'] = params['Direction']
+                        self.next_state[state_name]['Operator'] = get_operator(params['Direction'])
                     elif params['ConditionType'] == 'None':
                         self.next_state[state_name]['ConditionType'] = 'None'
                     else:
@@ -126,6 +146,10 @@ class TaskState:
                         next_state.append(  (state_name, 'Delay ({})'.format(condition['State'].label)) )
                     elif condition['ConditionType'] == 'GPIO':
                         next_state.append( (state_name, 'GPIO {} = {}'.format(condition['Pin'], condition['Value'])))
+                    elif condition['ConditionType'] == 'Speed':
+                        next_state.append( (state_name, 'Speed {} {}'.format(condition['Direction'], condition['Threshold'])))
+                    elif condition['ConditionType'] == 'Position':
+                        next_state.append( (state_name, 'Position {} {}'.format(condition['Direction'], condition['Threshold'])))
                     else:
                         next_state.append( (state_name, condition['ConditionType']) )
                 return next_state
@@ -140,14 +164,18 @@ class TaskState:
                 if  ((condition['ConditionType'] == 'ElapsedTime') and (time > condition['TransitionTime'])) or \
                     ((condition['ConditionType'] == 'Delay') and (condition['State'].get_next_state())) or \
                     ((condition['ConditionType'] == 'GPIO') and \
-                        (self.io_interface.read_pin(condition['Pin']) == condition['Value'])):
+                        (self.io_interface.read_pin(condition['Pin']) == condition['Value'])) or \
+                    ((condition['ConditionType'] == 'Speed') and \
+                        condition['Operator'](self.io_interface.speed, condition['Threshold'])) or \
+                    ((condition['ConditionType'] == 'Position') and \
+                        condition['Operator'](self.io_interface.pos, condition['Threshold'])):
                     # (note that we don't even check for "None")
                     next_state.append(state_name)
                     priority.append(condition['Priority'])
                 elif condition['ConditionType'] == 'None': # add state transition if unconditional
                     next_state.append(state_name)
                     priority.append(condition['Priority'])
-                elif condition['ConditionType'] not in ['None', 'ElapsedTime', 'Delay', 'GPIO']:
+                elif condition['ConditionType'] not in ['None', 'ElapsedTime', 'Delay', 'GPIO', 'Speed', 'Position']:
                     if self.check_state_transition(state_name, condition): # check custom state transition
                         next_state.append(state_name)
                         priority.append(condition['Priority'])
@@ -427,6 +455,37 @@ class SetGPIOState(TaskState):
             self.io_interface.GPIOs[self.pin]["Number"],self.level)
         label +='</table>'
         return label
+
+class SetPosition(TaskState):
+    def __init__(self, label, state_config, io_interface):
+        TaskState.__init__(self, label, state_config, io_interface)
+        self.Type = 'SetPosition'
+        params = state_config['Params']
+        self.pos = params['Position']
+
+    def on_entrance(self, logger=None):
+        TaskState.on_entrance(self, logger)
+        self.io_interface.pos = self.pos
+
+        time = self.io_interface.MasterTime
+        if logger:
+            logger([time,-1,-1,-1,-1,'SetPosition', self.pos])
+
+class LockPosition(TaskState):
+    def __init__(self, label, state_config, io_interface):
+        TaskState.__init__(self, label, state_config, io_interface)
+        self.Type = 'LockPosition'
+        params = state_config['Params']
+        self.lock_state = params['LockState']
+
+    def on_entrance(self, logger=None):
+        TaskState.on_entrance(self, logger)
+        self.io_interface.block_movement = self.lock_state
+
+        time = self.io_interface.MasterTime
+        if logger:
+            logger([time,-1,-1,-1,-1,'LockPosition', self.lock_state])
+
 
 
 class SetSoundStimulusState(TaskState):
@@ -990,6 +1049,14 @@ class TaskStateMachine():
                     state_name, state, io_interface)
                 self.needs_zmq = True
 
+            elif (state['Type'] == 'SetPosition'):
+                self.StateMachineDict[state_name] = SetPosition(
+                    state_name, state, io_interface)
+
+            elif (state['Type'] == 'LockPosition'):
+                self.StateMachineDict[state_name] = LockPosition(
+                    state_name, state, io_interface)
+
             elif (state['Type'] == 'Patch'):
                 self.StateMachineDict[state_name] = PatchState(
                     state_name, state, io_interface)
@@ -998,8 +1065,7 @@ class TaskStateMachine():
                 set_internal[state_name] = state
 
             else:
-                raise(NotImplementedError("State machine elements other than "
-                                          "Delay, SetGPIO, Reward, or Visualization not yet implemented"))
+                raise(NotImplementedError("Unknown state machine element {}".format(state['Type'])))
 
         for state_name, state in set_internal.items(): # avoids KeyError if state not yet added
             # NOTE: Is it better to parse State parameter here, 

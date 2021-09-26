@@ -27,7 +27,7 @@ import warnings
 from contextlib import ExitStack
 
 
-NamedVersion = '1.1'
+NamedVersion = '1.2'
 Profiling = False
 
 
@@ -59,15 +59,12 @@ with open(args.param_file, 'r') as f:
     Config = yaml.safe_load(f)
 
 # ------------------- Validate config file-------------------------------------------------------------
-from treadmillio.soundstimulus import validate_sound_config
-
 if 'AuditoryStimuli' in Config:
+    from treadmillio.soundstimulus import validate_sound_config
     validate_sound_config(Config['AuditoryStimuli'])
 
 # ------------------- Setup logging. ------------------------------------------------------------------
-DoLogCommands = True
-if 'LogCommands' in Config['Preferences']:
-    DoLogCommands = Config['Preferences']['LogCommands']
+DoLogCommands = Config['Preferences'].get('LogCommands', True)
 
 if DoLogCommands:
     auto_log_directory = Config['Preferences'].get('AutoLogDirectory', True) if 'Preferences' in Config else True
@@ -110,16 +107,13 @@ if DoLogCommands:
             os.removedirs(log_directory)
             exit(0)
 
-
 else:
     print('#'*80, '\n')
     print('Warning!!! Not logging!!!!')
     print('#'*80, '\n')
+    log_directory = None
 
-
-EnableSound = False
-if 'EnableSound' in Config['Preferences']:
-    EnableSound = Config['Preferences']['EnableSound']
+EnableSound = Config['Preferences'].get('EnableSound', False)
 
 # Check for random seed on command line or in preferences
 if args.random_seed is not None:
@@ -133,41 +127,31 @@ elif 'RandomSeed' in Config['Preferences']:
     print(f"Setting random seed to {Config['Preferences']['RandomSeed']}.")
 
 
-#----------------------- parameters --------------
-TrackTransform = None
-
-virtual_track_length = 1000.0 #cm
-d = 20.2 #cm
-encoder_gain = 4096.0
-if 'Maze' in Config:
-    if 'Length' in Config['Maze']:
-        virtual_track_length = Config['Maze']['Length'] #cm
-    if 'WheelDiameter' in Config['Maze']:
-        d = Config['Maze']['WheelDiameter'] #cm diameter of the physical wheel; 150cm
-    if 'EncoderGain' in Config['Maze']:
-        encoder_gain = Config['Maze']['EncoderGain']
-
-
-#----------------------- Sound stimuli --------------
-
-from treadmillio.soundstimulus import SoundStimulusController
-
 with ExitStack() as stack:
+    # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
+    from treadmillio.serialinterface import SerialInterface
+
+    gpio_config = Config.get('GPIO', None)
+    if not gpio_config:
+        warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
+
+    maze_config = Config.get('Maze', None)
+
+    if 'Preferences' in Config:
+        zmq_streaming = Config['Preferences'].get('DataStreamingPort', None)
+    
+    Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, gpio_config=gpio_config, 
+                                                    maze_config=maze_config, zmq_streaming=zmq_streaming))
+
+    #----------------------- Sound stimuli --------------
     if 'AuditoryStimuli' in Config and EnableSound:
-        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], virtual_track_length, log_directory))
+        from treadmillio.soundstimulus import SoundStimulusController
+        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], Interface.virtual_track_length, log_directory))
     else:
         SoundController = None
         if 'AuditoryStimuli' in Config:
             warnings.warn("Config file specified AuditoryStimuli, but EnableSound is False.", RuntimeWarning)
 
-    # --------------  Initialize Serial IO - Won't actually do anything until we call connect()! --------------------------
-    from treadmillio import SerialInterface
-
-    if 'GPIO' in Config:
-        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=Config['GPIO']))
-    else:
-        Interface = stack.enter_context(SerialInterface(SerialPort=args.serial_port, config=None))
-        warnings.warn("No GPIOs specified in config file. All IOs will be inputs.", RuntimeWarning)
 
     # ------------------- Read in State Machine States. ------------------------------------------------------------------
     if 'StateMachine' in Config:
@@ -231,7 +215,6 @@ with ExitStack() as stack:
             execution_log = stack.enter_context(open(os.path.join(log_directory, 'execution.csv'), 'w', newline=''))
             execution_writer = csv.writer(execution_log)
 
-
     # ------------------- Webcam Video Recording. ------------------------------------------------------------------
     if 'Cameras' in Config:
         from treadmillio.uvccam.uvccam import RunCameraInterface
@@ -255,16 +238,15 @@ with ExitStack() as stack:
 
     Interface.connect()
 
-    FlagChar, StructSize, MasterTime, Encoder, UnwrappedEncoder, GPIO, AuxGPIO = Interface.read_data()
-    initialUnwrappedencoder = UnwrappedEncoder
-    if DoLogCommands:
-        log_writer.writerow([0, GPIO, Encoder, UnwrappedEncoder, 0]) # Log the initial data from serial interface
+    FlagChar, StructSize, MasterTime, InitialEncoder, InitialUnwrappedEncoder, InitialGPIO, AuxGPIO = Interface.read_data() # This will initialize encoder
 
     if SoundController:
         SoundController.start_capture() # TODO: This doesn't currently do anything
 
     if StateMachine:
         StateMachine.start(MasterTime)
+
+    first_sample = True
 
     while(True):
         ## every 2 ms happens:
@@ -273,7 +255,13 @@ with ExitStack() as stack:
                                     # since read_data() is blocking, this is a farther bound (i.e., ts AFTER) data
 
         if DoLogCommands:
-            log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts]) # Log data from serial interface
+            if not first_sample:
+                log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts, Interface.pos, Interface.velocity]) # Log data from serial interface
+            else: # for ths first sample, to synchronize to a meaningful clock, we the CLOCK_REALTIME time, in the first row 
+                sys_ts = time.time()
+                log_writer.writerow([0, InitialGPIO, InitialEncoder, UnwrappedEncoder, sys_ts, 0, 0]) 
+                log_writer.writerow([MasterTime, GPIO, Encoder, UnwrappedEncoder, last_ts, Interface.pos, Interface.velocity])
+                first_sample = False
 
         # -------------------- Updates -------------------- 
         Interface.update_pulses() # lower any outstanding GPIO pulses
@@ -287,28 +275,25 @@ with ExitStack() as stack:
             else:
                 StateMachine.update_statemachine(None) # update the state machine
 
-        unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
-        pos = unwrapped_pos % virtual_track_length
+        # unwrapped_pos = (UnwrappedEncoder - initialUnwrappedencoder) / encoder_gain *d *np.pi 
+        # pos = unwrapped_pos % virtual_track_length
 
-        if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
-            print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {pos}. Lap: {unwrapped_pos // virtual_track_length}')
+        if "Maze" in Config:
+            if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
+                print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {Interface.pos}. Lap: {Interface.unwrapped_pos // Interface.virtual_track_length}. Speed: {Interface.velocity}')
 
         if SoundController:
-            SoundController.update_localized(pos, unwrapped_pos) # update VR-position-dependent sounds
+            SoundController.update_localized(Interface.pos, Interface.unwrapped_pos) # update VR-position-dependent sounds
 
         if RewardZones:
             if DoLogCommands:
-                RewardZones.update_reward_zones(MasterTime, pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
+                RewardZones.update_reward_zones(MasterTime, Interface.pos, GPIO, reward_zone_writer.writerow) # update any VR-position rewards
             else:
-                RewardZones.update_reward_zones(MasterTime, pos, GPIO) # update any VR-position rewards
+                RewardZones.update_reward_zones(MasterTime, Interface.pos, GPIO) # update any VR-position rewards
 
         if Profiling and DoLogCommands:
             exec_time = time.monotonic() - last_ts
             execution_writer.writerow([exec_time])
-
-
-
-
 
 
 
