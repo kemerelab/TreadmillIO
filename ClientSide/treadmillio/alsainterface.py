@@ -342,6 +342,154 @@ class ALSARecordSystem():
                     print('buffer underrun {}'.format(t), file=self.xrun_logfile)
 
 
+class NIPlaybackSystem():
+    def __init__(self, dev_name, config, file_root, control_pipe, log_directory=None):
+
+        import socket
+
+        self.running = False
+        self.ni_connection = None
+        
+        self.control_pipe = control_pipe
+
+        # config['DeviceList'][dev_name] = normalize_output_device(config['DeviceList'][dev_name])
+
+        self.ni_host = config['DeviceList'][dev_name]['NIHost']
+        self.ni_port = config['DeviceList'][dev_name]['NIPort']
+        self.ni_basepath = config['DeviceList'][dev_name]['NIBasepath']
+
+        # buffer_size = config['DeviceList'][dev_name]['BufferSize']
+        # dtype = config['DeviceList'][dev_name]['DType']
+        # device = config['DeviceList'][dev_name]['HWDevice']
+        channel_labels = config['DeviceList'][dev_name]['ChannelLabels']
+        num_channels = config['DeviceList'][dev_name]['NChannels']
+        assert(num_channels == 1)
+        assert(len(channel_labels) == 1)
+
+        # Set up stimuli with default values
+        StimuliList = look_for_and_add_stimulus_defaults(config)
+
+        # Begin by loading sound files
+        self.stimuli = {}
+        if len(StimuliList) < 1:
+            raise(ValueError('Must specify at least one stimulus!'))
+
+        # Check for number of bundled sounds
+        self.num_stimuli = 0
+        for stimulus_name, stimulus in StimuliList.items():
+            if stimulus['Type'] == 'Bundle':
+                root_dir = stimulus.get('Directory', './')
+                self.num_stimuli += len(glob.glob(os.path.join(file_root, root_dir, stimulus['Filename'])))
+            else:
+                self.num_stimuli += 1
+
+        k = 0
+        for stimulus_name, stimulus in StimuliList.items():
+            if stimulus_name in ILLEGAL_STIMULUS_NAMES:
+                raise(ValueError('{} is an illegal name for a stimulus.'.format(stimulus_name)))
+
+            print('Adding stimulus {}...'.format(stimulus_name))
+            if stimulus.get('Device', 'Default1') in channel_labels:
+                channel = channel_labels[stimulus.get('Device', 'Default1')]
+                gain = stimulus.get('OffGain', -90.0)
+                if stimulus['Type'] == 'Bundle':
+                    root_dir = stimulus.get('Directory', './')
+                    filelist = sort_bundled_sounds(glob.glob(os.path.join(file_root, root_dir, stimulus['Filename'])))
+                    for i, filepath in enumerate(filelist):
+                        # self.stimuli['-'.join([stimulus_name, str(i)])] = Stimulus(filepath, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
+                        self.stimuli['-'.join([stimulus_name, str(i)])] = filepath
+                        k = k + 1
+                else:
+                    filename = os.path.join(file_root, stimulus['Filename'])
+                    # self.stimuli[stimulus_name] = Stimulus(filename, self.data_buf[:,:,k], channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
+                    self.stimuli[stimulus_name] = filename
+                    k = k + 1
+            else:
+                print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
+
+        ####
+        # TODO: WHAT HAPPENS IF WE CONTROL C RIGHT DURING THIS????
+        # start reading from the pipe to get what ever initialization happens out of the way
+        if self.control_pipe.poll():
+            msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
+            print('Unexpected message before start: {}'.format(msg))
+            print('TODO: Figure out how to shutdown pipes properly\n') # TODO here
+
+
+        # TODO: Open TCP connection here, send filenames to set up
+
+        self.ni_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.ni_server.bind((self.ni_host, self.ni_port))
+        self.ni_server.listen(1) # The "1" here means accept one connection.
+        self.ni_connection, addr = self.ni_server.accept() # TODO: I don't fully understand the order of operations here 
+                                     # - does this mean we'll hang here until a connection is made?
+        cmnd_con = self.ni_connection.recv(9)  # message from LabVIEW: "Connected" TODO: check whether it's right?
+        print(cmnd_con)
+
+        ## send wav files base path and filenames
+        # For LabVIEW to deal with messages with varying lengths, send messages that are preceded by a fixed size header that describes the message. 
+        # For example, it contain a command integer that identifies what kind of message follows 
+        # and a length integer that identifies how much more data is in the message.
+        basepath_control_msg =  bytes(f'1{len(self.ni_basepath):04d}', 'utf-8')
+        self.ni_connection.sendall(basepath_control_msg) # Msg type 1: wav filenames, 0012: basepath length is 44
+        self.ni_connection.sendall(bytes(self.ni_basepath, 'utf-8'))
+
+        #filenames = 'ClientSide_Sounds_48kHz_tone_4kHz.wav,ClientSide_Sounds_48kHz_tone_9kHz.wav,ClientSide_Sounds_48kHz_tone_17kHz.wav,ClientSide_Sounds_48kHz_tone_cloud_short.wav'
+        #conn.sendall(b'0159') # 0159: filenames length is 159
+        #conn.sendall(b'ClientSide_Sounds_48kHz_tone_4kHz.wav,ClientSide_Sounds_48kHz_tone_9kHz.wav,ClientSide_Sounds_48kHz_tone_17kHz.wav,ClientSide_Sounds_48kHz_tone_cloud_short.wav')
+
+        # for testing purpose, use the same wav file
+        filenames = self.stimuli.join(',')
+        filename_control_msg = bytes(f'{len(filenames):04d}', 'utf-8')
+        self.ni_connection.sendall(filename_control_msg) # 0151: filenames length is 151
+        self.ni_connection.sendall(filenames)
+        cmnd_load = self.ni_connection.recv(11)  # message from LabVIEW: LoadSuccess
+        print(cmnd_load)        
+
+        ######
+
+    def __del__(self):
+        if self.ni_connection:
+            self.ni_connection.sendall(b'30000') # 3: stop
+            cmnd_stop = self.ni_connection.recv(7)  # message from LabVIEW: Stopped
+            print(cmnd_stop)
+            self.ni_connection.close()
+            self.ni_server.close()
+            self.ni_connection = None
+
+    def set_gain(self, stimulus, gain):
+        self.stimuli[stimulus].gain = gain
+
+    def play(self):
+        print(time.time())
+        self.running = True
+        while self.running:
+            while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
+                msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
+                commands = pickle.loads(msg)
+                # if 'StopMessage' in commands:
+                #     print('Got StopMessage in ALSA process.')
+                #     break;
+                try:
+                    for key, gain in commands.items():
+                        if key in self.stimuli:
+                            self.stimuli[key].gain = gain
+                        elif key is not None: # pass if key is None
+                            raise ValueError('Unknown stimulus {}.'.format(key))
+                except:
+                    print('Exception: ', commands)
+
+                # TODO: Convert gain to voltages
+                volume_msg = [str(s.gain) for s in s.stimuli].join(',')
+                self.ni_connection.sendall(bytes(f'2{len(volume_msg):04d}', 'utf-8')) ## 2: volumes, 0015: volumes length is 15
+                self.ni_connection.sendall(bytes(volume_msg,'utf-8'))
+
+
+        if self.running == False:
+            print('SIGINT flag changed.')
+
+
+
 def normalize_output_device(config):
     config['BufferSize'] = config.get('BufferSize', DEFAULT_OUTPUT_DEVICE['BufferSize'])
     config['DType'] = config.get('DType', DEFAULT_OUTPUT_DEVICE['DType'])
