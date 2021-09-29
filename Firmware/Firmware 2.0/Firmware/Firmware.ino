@@ -15,6 +15,9 @@ volatile uint32_t MasterClock = 0;
 
 boolean SerialTransmitFlag = false;
 
+//#define DEBUG // uncomment this for testing - works with a bare teensy or a board without a wheel hooked up
+
+#ifndef DEBUG
 // ISR routine for FlexTimer1 Module
 extern "C" void ftm1_isr(void) {
     if ((FTM1_SC & FTM_SC_TOF) != 0) {  //read the timer overflow flag (TOF in FTM1_SC)
@@ -25,6 +28,13 @@ extern "C" void ftm1_isr(void) {
             SerialTransmitFlag  = true;
     }
 }
+#else
+void fake_ftm1_isr(void) {
+    MasterClock++;
+    if ((MasterClock & 0x01) == 0)
+        SerialTransmitFlag  = true;
+}
+#endif
 
 void sendData() {
 
@@ -33,13 +43,20 @@ void sendData() {
         TreadmillData.GPIO = (GPIOD_PDIR & 0xFF) + ((GPIOB_PDIR & 0x0F) << 8);
         TreadmillData.AUXIO = (GPIOC_PDIR & 0xFFF);
         TreadmillData.UnwrappedEncoderTicks = wheelPosition.read();
+        #ifdef DEBUG
         // for testing, we can just skip reading and just increment the encoder value
-        // TreadmillData.UnwrappedEncoderTicks = (TreadmillData.UnwrappedEncoderTicks + 8); 
+        TreadmillData.UnwrappedEncoderTicks = (TreadmillData.UnwrappedEncoderTicks + 8); 
+        #endif
         Serial.write((char *) &TreadmillData, sizeof(TreadmillDataStruct));
         Serial.flush();
     }
 
 }
+
+
+#ifdef DEBUG
+IntervalTimer fakeExternalClock;
+#endif
 
 void setup() {
 
@@ -60,6 +77,7 @@ void setup() {
      *   data transmission, so we'll just use the Teensy for that.
      *   
      */
+#ifndef DEBUG
     CORE_PIN0_CONFIG = PORT_PCR_MUX(4);
     NVIC_DISABLE_IRQ(IRQ_FTM1);
     FTM1_SC = 0;
@@ -67,7 +85,9 @@ void setup() {
     FTM1_MOD = 0x1; // set to overflow every two ticks (1 kHz)
     FTM1_SC = FTM_SC_CLKS(3) + FTM_SC_PS(0) + FTM_SC_TOIE; // External clock input
     NVIC_ENABLE_IRQ(IRQ_FTM1);
-
+#else
+    fakeExternalClock.begin(fake_ftm1_isr, 1000);  // run fake ISR at 1 kHz
+#endif
 
     digitalWrite(LED0, 0);
     digitalWrite(LED1, 0);
@@ -126,14 +146,12 @@ void loop() {
         sendData();
         SerialTransmitFlag = false; // I'm worried about the case where I set this right when the timer is trying to wake us up.
         // But I guess in that case, it would indicate we're on the hairy edge of stability, which is bad anyway.
-
         sequenceLEDs();
     }
 
 
     /* TODO: Add commands to Start and Stop streaming as well as
              reporting configuration. */
-
 
     int SerialBufferFlushCounter = SERIAL_READS_BEFORE_LEAVING;
     uint8_t IncomingByte = '\0';
@@ -178,5 +196,6 @@ void loop() {
             SerialBufferFlushCounter -= 4;
         }
     }
+
 
 }
