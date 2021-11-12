@@ -325,10 +325,10 @@ def pos_gain_linear_db_ring(x, center, track_length, cutoff, off_gain, max_gain,
 
 def pos_gain_linear_db_straight(x, center, track_length, cutoff, off_gain, max_gain, slope):
     d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
-    if (relpos > cutoff):
+    if (d > cutoff):
         return off_gain
     else:
-        new_gain = max_gain - relpos*slope
+        new_gain = max_gain - d*slope
         return new_gain
 
 # @jit
@@ -343,10 +343,10 @@ def pos_gain_natural_ring(x, center, track_length, cutoff, off_gain, max_gain, s
 
 def pos_gain_natural_straight(x, center, track_length, cutoff, off_gain, max_gain, speaker_distance):
     d = abs(center-x) # distance to center #TODO: make sure this can never exceed track length
-    if (relpos > cutoff):
+    if (d > cutoff):
         return off_gain
     else:
-        new_gain = max_gain - 10*math.log10(relpos**2 + speaker_distance**2) + 20*math.log10(speaker_distance)
+        new_gain = max_gain - 10*math.log10(d**2 + speaker_distance**2) + 20*math.log10(speaker_distance)
         return new_gain
 
 

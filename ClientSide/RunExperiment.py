@@ -146,7 +146,8 @@ with ExitStack() as stack:
     #----------------------- Sound stimuli --------------
     if 'AuditoryStimuli' in Config and EnableSound:
         from treadmillio.soundstimulus import SoundStimulusController
-        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], Interface.virtual_track_length, log_directory))
+        SoundController = stack.enter_context(SoundStimulusController(Config['AuditoryStimuli'], Interface.virtual_track_length, 
+                                              Interface.maze_topology, log_directory))
     else:
         SoundController = None
         if 'AuditoryStimuli' in Config:
