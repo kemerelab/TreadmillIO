@@ -1,0 +1,171 @@
+Info: # "Info" configuration options can be overridden by command line options
+  MouseID: V2A4 # Used to name saved data file
+  Note: '' # Added in a block at the start of saved data file
+  Session: '' # This is added to default (date and time)
+  TaskType: Auditory VR Example
+
+Preferences:
+  HeartBeat: 2000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: True
+  DataStreamingPort: 8556
+
+GPIO: # A list of GPIO pins used in the task
+  Lick: # This is an arbitrary label used later to configure Reward
+    Number: 2 # This is the pin number from the board
+    Type: 'Input' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
+                           # (where the pull-down/pull-up resistors are enabled).
+    Power: False # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
+                # enabling the power channel of the audio jack.
+  Screen: # This is an arbitrary label used later to configure Reward
+    Number: 3 # This is the pin number from the board
+    Type: 'Input' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
+                           # (where the pull-down/pull-up resistors are enabled).
+    Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
+                # enabling the power channel of the audio jack.
+  Reward:
+    Number: 1
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+
+Maze:
+  Type: 'VR' # VR or physical
+  EncoderGain: 8192.0 # Encoder value per revolution
+  Length: 400.0 # (240 is "sound length") Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
+  WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
+  TrackTransform: None # Not currently implemented.
+  Topology: 'Line'
+
+StateMachine:
+  States:
+    InitialState:
+      Type: 'SetPosition'
+      Params:
+        Position: 0
+      NextState: 'RestartMovement'
+    RestartMovement:
+      Type: 'LockPosition'
+      Params:
+        LockState: False
+      NextState: 'WaitingForRewardZone'
+    WaitingForRewardZone:
+      Type: 'Base'
+      NextState:
+        FreezeMovement:
+          ConditionType: 'Position'
+          Threshold: 400
+          Direction: '>='
+    FreezeMovement:
+      Type: 'LockPosition'
+      Params:
+        LockState: True
+      NextState: 'DoTeleport'
+    DoTeleport:
+      Type: 'SetPosition'
+      Params:
+        Position: -20
+      NextState: 'RewardPumpState'
+    RewardPumpState:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'Reward'
+        Value: 1
+      NextState:
+        RewardPumpOffState:
+          ConditionType: 'ElapsedTime'
+          Duration: 100
+    RewardPumpOffState:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'Reward'
+        Value: 0
+      NextState:
+        InitialState:
+          ConditionType: 'ElapsedTime'
+          Duration: 2500
+
+
+
+# AuditoryStimuli:
+#   AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
+
+#   Defaults:
+#     BaselineGain: 0.0 # Max gain for linear stimuli
+#     Modulation:
+#       Type: 'Linear'
+#       CutoffGain: -20.0 #dB at cutoff
+#       SpeakerDistance: 10 # cm (distance of speaker to track)
+#       Width: 30 # cm
+
+#   StimuliList:
+#     BackgroundSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+#       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+#       BaselineGain: -10.0
+#       Filename: 'tone_cloud_short.wav'
+#       Color: 'pink' # Matplotlib color name used for visualization system
+#       Device: 'Speaker1' # or single device, or list of devices
+#     Zone_A:
+#       Type: 'Localized'
+#       CenterPosition: 70 
+#       Filename: 'tone_4kHz.wav'
+#       Color: 'lime'
+#       Device: 'Speaker1' # or single device, or list of devices
+#     Zone_B1:
+#       Type: 'Localized'
+#       CenterPosition: 130 
+#       Filename: 'tone_9kHz.wav'
+#       Color: 'lime'
+#       Device: 'Speaker1' # or single device, or list of devices
+#     Zone_C:
+#       Type: 'Localized'
+#       CenterPosition: 190 
+#       Filename: 'tone_17kHz.wav'
+#       Color: 'lime'
+#       Device: 'Speaker1' # or single device, or list of devices
+#     Zone_B2:
+#       Type: 'Localized'
+#       CenterPosition: 250 
+#       Filename: 'tone_9kHz.wav'
+#       Color: 'lime'
+#       Device: 'Speaker1' # or single device, or list of devices
+
+#   DeviceList:
+#     Output1:
+#       Type: 'Output' # Input or Output
+#       HWDevice: 'hw:CARD=SoundCard,DEV=0'
+#       BufferSize: 256
+#       NChannels: 2
+#       ChannelLabels:
+#         Speaker1: 1
+    # Microphone1:
+    #   Type: 'Input'
+    #   HWDevice: 'hw:CARD=SoundCard,DEV=0'
+    #   NChannels: 2
+    #   SamplingRate: 96000 # I'd like to autodetect from playback, but this would require communication between processes
+    #   BufferSize: 2048 
+    #   Record: True
+    #   FilenameHeader: ''
+    # CameraMicrophone:
+    #   Type: 'Input'
+    #   HWDevice: 'hw:CARD=Camera,DEV=0'
+    #   NChannels: 1
+    #   SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
+    #   BufferSize: 2048 
+    #   Record: True
+    #   FilenameHeader: ''
+
+
+# Cameras:
+#   Camera1:
+#     RecordVideo: True
+#     FilenameHeader: 'MouseCam'
+#     Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
+#     CameraIndex: 0
+#     ResX: 1280 
+#     ResY: 720
+#     FrameRate: 30
+#     CameraParams:
+#       Power Line frequency: 2, # 60 Hz
+#       Gain: 10
