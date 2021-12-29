@@ -1,4 +1,3 @@
-
 # This config file is defined to allow us to initially train mice that we want them
 #  to (1) walk/run on the wheel and (2) lick for reward. The implementation just requires
 #  them to run 40 cm, at which point the reward is triggered and the sound is turned off
@@ -32,7 +31,7 @@ GPIO: # A list of GPIO pins used in the task
 Maze:
   Type: 'VR' # VR or physical
   EncoderGain: 8192.0 # Encoder value per revolution
-  Length: 50.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
+  Length: 40.0 # Length of the track. Presumably in cm units, but units don't really matter as long as they're consistent.
   WheelDiameter: 20.2 # Diameter of the wheel (presumably in cm units).
   TrackTransform: None # Not currently implemented.
   Topology: 'Line' # Ring or Line. Line doesn't wrap position
@@ -93,7 +92,7 @@ StateMachine:
       NextState:
         StartOfMaze:
           ConditionType: 'ElapsedTime'
-          Duration: 2500
+          Duration: 2400
 
 
 AuditoryStimuli:
