@@ -9,6 +9,7 @@ Preferences:
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
+  DataStreamingPort: 8556
 
 GPIO: # A list of GPIO pins used in the task
   Lick: # This is an arbitrary label used later to configure Reward
