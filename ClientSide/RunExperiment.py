@@ -282,6 +282,8 @@ with ExitStack() as stack:
         if "Maze" in Config:
             if (MasterTime % Config['Preferences']['HeartBeat']) == 0:
                 print(f'Heartbeat {MasterTime} - 0x{GPIO:012b}. Pos - {Interface.pos}. Lap: {Interface.unwrapped_pos // Interface.virtual_track_length}. Speed: {Interface.velocity}')
+                if StateMachine:
+                    print(StateMachine.CurrentState.label)
 
         if SoundController:
             SoundController.update_localized(Interface.pos, Interface.unwrapped_pos) # update VR-position-dependent sounds

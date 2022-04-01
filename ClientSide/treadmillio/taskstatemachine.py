@@ -110,6 +110,8 @@ class TaskState:
                         self.next_state[state_name]['Threshold'] = params['Threshold']
                         self.next_state[state_name]['Direction'] = params['Direction']
                         self.next_state[state_name]['Operator'] = get_operator(params['Direction'])
+                    elif params['ConditionType'] == 'Random':
+                        self.next_state[state_name]['RandomPriority'] = params.get('RandomPriority', 1.0)
                     elif params['ConditionType'] == 'None':
                         self.next_state[state_name]['ConditionType'] = 'None'
                     else:
@@ -166,12 +168,15 @@ class TaskState:
                     ((condition['ConditionType'] == 'GPIO') and \
                         (self.io_interface.read_pin(condition['Pin']) == condition['Value'])) or \
                     ((condition['ConditionType'] == 'Speed') and \
-                        condition['Operator'](self.io_interface.speed, condition['Threshold'])) or \
+                        condition['Operator'](self.io_interface.velocity, condition['Threshold'])) or \
                     ((condition['ConditionType'] == 'Position') and \
                         condition['Operator'](self.io_interface.pos, condition['Threshold'])):
                     # (note that we don't even check for "None")
                     next_state.append(state_name)
                     priority.append(condition['Priority'])
+                elif condition['ConditionType'] == 'Random': # enable random state transitions using priority
+                    next_state.append(state_name)
+                    priority.append(np.random.rand() * condition['RandomPriority'])
                 elif condition['ConditionType'] == 'None': # add state transition if unconditional
                     next_state.append(state_name)
                     priority.append(condition['Priority'])
@@ -216,7 +221,6 @@ class TaskState:
         """Check task-specific state transition. Returns True if condition met."""
         raise NotImplementedError('Parsing state {}. ConditionType {} is not implemented.'
                                   .format(self.label, params['ConditionType']))
-
 
 class DelayState(TaskState):
 # Example yaml:
@@ -301,7 +305,6 @@ class DelayState(TaskState):
                         self.delay_min, self.delay_max)
         else:
             return TaskState.get_graph_label(self)
-        
 
 
 class VisualizationState(TaskState):
@@ -456,6 +459,7 @@ class SetGPIOState(TaskState):
         label +='</table>'
         return label
 
+
 class SetPosition(TaskState):
     def __init__(self, label, state_config, io_interface):
         TaskState.__init__(self, label, state_config, io_interface)
@@ -471,6 +475,7 @@ class SetPosition(TaskState):
         if logger:
             logger([time,-1,-1,-1,-1,'SetPosition', self.pos])
 
+
 class LockPosition(TaskState):
     def __init__(self, label, state_config, io_interface):
         TaskState.__init__(self, label, state_config, io_interface)
@@ -485,7 +490,6 @@ class LockPosition(TaskState):
         time = self.io_interface.MasterTime
         if logger:
             logger([time,-1,-1,-1,-1,'LockPosition', self.lock_state])
-
 
 
 class SetSoundStimulusState(TaskState):
@@ -558,7 +562,6 @@ class SetSoundStimulusState(TaskState):
                 label += '<tr><td>Stop {}</td></tr>'.format(params['Sound'].name)
         label +='</table>'
         return label
-
 
 
 class SetInternalState(TaskState):
@@ -779,6 +782,7 @@ class PatchState(TaskState):
         return label
 
 
+
 class PatchModel():
 
     REQUIRED_PARAMS = []
@@ -850,7 +854,6 @@ class PatchModel():
         if random.random() < self.p_switch:
             self.set_params()
 
-
 class ExponentialPatch(PatchModel):
 
     REQUIRED_PARAMS = ['tau', 'r0']
@@ -893,8 +896,7 @@ class ExponentialPatch(PatchModel):
     def update(self, time):
         PatchModel.update(self, time)
         self.R = self.R_func(self.t)
-
-    
+ 
 class PoissonPatch(PatchModel):
     
     REQUIRED_PARAMS = ['tau', 'V0', 'lambda0']
