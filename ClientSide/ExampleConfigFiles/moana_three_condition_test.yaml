@@ -1,0 +1,181 @@
+# The point of this config file is to light up all 12 of the GPIO LEDs for testing during manufacturing.
+# It's a simple statemachine that set's them to high, and then turns one off at a time with a 500 ms delay,
+#   until they're all off. Then the cycle repeats.
+#
+# Since its for testing, this is also a chance to validate that "LogCommands: False" doesn't cause problems.
+
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: False
+
+GPIO: # A list of GPIO pins used in the task
+  Camera: # This is an arbitrary label used later to configure Reward
+    Number: 1 # This is the pin number from the board
+    # Type: 'Input' 
+    Type: 'Input_Pulldown' 
+    Power: False   #False when using Olympus microscope!!!!!restart the board-------true when using NI board------!!!!!!!!!!!!!!!!   
+
+  Lick:
+    Number: 2
+    Type: 'Input' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' 
+                           # (where the pull-down/pull-up resistors are enabled).
+    Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
+                # enabling the power channel of the audio jack.
+
+
+  # Pins used if we want to synchronize to monitor
+  ScreenLeft: 
+    Number: 3 
+    Type: 'Input_Pulldown' 
+    Power: True
+
+  ScreenRight:
+    Number: 4
+    Type: 'Input_Pulldown' 
+    Power: True
+
+
+  # Use these three to synchronize to what type of stimulus it is
+  ScreenOnGPIO:
+    Number: 5
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  AirOnGPIO:
+    Number: 6
+    Type: 'Output'
+    Mirror: True
+  NothingOnGPIO:
+    Number: 7
+    Type: 'Output'
+    Mirror: True
+
+
+  Disable8:
+    Number: 8
+    Type: 'Input_Disable'
+  Disable9:
+    Number: 9
+    Type: 'Input_Disable'
+  Disable10:
+    Number: 10
+    Type: 'Input_Disable'
+  Disable11:
+    Number: 11
+    Type: 'Input_Disable'
+  Disable12:
+    Number: 12
+    Type: 'Input_Disable'
+
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    WaitForCameraToBeOn:
+      FirstState: True
+      Type: 'Base'
+      Params:
+        Duration: 'Fixed'
+        Value: 20
+      NextState:
+        DoRandomState:
+          ConditionType: 'GPIO'
+          Pin: 1 #'Camera'
+          Value: True
+          Priority: 2
+        WaitForCameraToBeOn:
+          Priority: 1
+
+    DoRandomState:
+      Type: 'Base'
+      Params:
+        Duration: 'Fixed'
+        Value: 2
+      NextState:
+        VisualStimulusGPIO_On:
+          ConditionType: 'Random'
+          RandomPriority: 1.0 # this scales a call to rand() - the priority is set to argmax of these
+        AirStimulusOn:
+          ConditionType: 'Random'
+          RandomPriority: 1.0
+        NothingStimulusOn:
+          ConditionType: 'Random'
+          RandomPriority: 1.0
+    
+    VisualStimulusGPIO_On:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'ScreenOnGPIO'
+        Value: 1
+      NextState: 'VisualStimulusOn'
+    VisualStimulusOn:
+      Type: 'Visualization'
+      Params:
+        VisType: 'Fixed'
+        Command: 'Both'
+      NextState:
+        VisualStimulusGPIO_Off:
+          ConditionType: 'ElapsedTime'
+          Duration: 2000
+    VisualStimulusGPIO_Off:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'ScreenOnGPIO'
+        Value: 0
+      NextState: 'VisualStimulusOff'
+    VisualStimulusOff:
+      Type: 'Visualization'
+      Params:
+        VisType: 'Fixed'
+        Command: 'Gray'
+      NextState: 'FinalDelay'
+
+    AirStimulusOn:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'AirOnGPIO'
+        Value: 1
+      NextState:
+        AirStimulusOff:
+          ConditionType: 'ElapsedTime'
+          Duration: 1500          
+    AirStimulusOff:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'AirOnGPIO'
+        Value: 0
+      NextState:
+        FinalDelay:
+          ConditionType: 'ElapsedTime'
+          Duration: 500
+
+    NothingStimulusOn:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'NothingOnGPIO'
+        Value: 1
+      NextState:
+        NothingStimulusOff:
+          ConditionType: 'ElapsedTime'
+          Duration: 2000          
+    NothingStimulusOff:
+      Type: 'SetGPIO'
+      Params:
+        Pin: 'NothingOnGPIO'
+        Value: 0
+      NextState: 'FinalDelay'
+
+    FinalDelay:
+      Type: 'Delay'
+      Params:
+        Duration: 'Fixed'
+        Value: 10000
+      NextState: 'WaitForCameraToBeOn'
+  
+
+
+
