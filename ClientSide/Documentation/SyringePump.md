@@ -14,19 +14,19 @@ This is a status message that I think means that nothing is going on and the pum
 is "stopped".
 
 4. Program the syringe diameter using the table at the end of the NE-500 manual
-(reproduced below). For example, for a B-D 5 ml syringe, `DIA 11.99` (press the
-"Enter" key at the end of commands. Type `DIA` and check that it now reports `11.99`.
+(reproduced below). For example, for a B-D 3 ml syringe, `DIA 8.585` (press the
+"Enter" key at the end of commands. Type `DIA` and check that it now reports `8.585`.
 
-5. Set the trigger mode to be active high. The manual refers to this as "Foot Switch Reversed"
-mode in section 6.5 (p. 10). Type `TRG F2` to set this mode. Type `TRG` and check
-that it has updated to `F2`. **The default trigger pin is pin 2 of the DB9 connector!**
+5. Set the trigger mode to be active high to "start the program". The manual refers to this as 
+"Start Only Reversed" mode in section 6.5 (p. 10). Type `TRG T2` to set this mode. Type `TRG` and check
+that it has updated to `T2`. **The default trigger pin is pin 2 of the DB9 connector!**
 
 6. We need to tell the pump that when triggered to dispense the appropriate volume. We'll
 use the constant-rate infusion mode, `FUN RAT`. We'll need to set an infusion rate and
 volume, and make sure that the direction is set to "infusion" (rather than "fill"). For example
-using a rate of 250 mL/hr, and a volume of 4 μL, we type: 
-`FUN RAT<enter>RAT 250 MH<enter>VOL 4<enter>DIR INF<enter>`. (Note that the default volume units
-are microliters!)
+using a rate of 125 mL/hr, and a volume of 4 μL, we type: 
+`FUN RAT<enter>RAT 125 MH<enter>VOL UL<enter>VOL 4<enter>DIR INF<enter>`. (Note that the 
+default volume units may be mL, so you need to specify!)
 
 7. If everything is working right, when you trigger the syringe pump, you should now get
 droplets the right size emerging!
