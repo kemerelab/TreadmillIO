@@ -41,7 +41,7 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
 
             self.sy = config['ResY']
             self.sx = config['ResX']
-            self.mode = config.get('Mode', 'Bayer_RG8')
+            self.mode = config.get('Mode', 'Mono8') # TODO: sync defaults across processes
             if self.mode not in ['Mono8', 'YUV422', 'Bayer_RG8']:
                 raise ValueError('Unknown color mode specified ({}).'.format(self.mode))
 

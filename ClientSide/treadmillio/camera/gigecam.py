@@ -83,9 +83,9 @@ def termination_handler(signal, frame):
 
 
 try:
-    from camera.uvccam.videowriter import start_writer
-    from camera.uvccam.camerainterface import start_camera
-    from camera.uvccam.camerawindow import start_window
+    from treadmillio.camera.videowriter import start_writer
+    from treadmillio.camera.camerainterface import start_camera
+    from treadmillio.camera.camerawindow import start_window
 except ModuleNotFoundError:
     from videowriter import start_writer
     from camerainterface import start_camera

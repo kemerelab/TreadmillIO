@@ -27,10 +27,10 @@ class VideoWriter():
         if not os.path.isdir(log_directory):
             raise(ValueError('VideoWriter LogDirectory [{}] not found.'.format(log_directory)))
 
-        self.sx = config['ResX']
+        self.sx = config['ResX'] 
         self.sy = config['ResY']
-        self.framerate = config.get('FrameRate', 30)
-        mode = config['Mode']
+        self.framerate = config.get('FrameRate', 30) # TODO: sync defaults across processes
+        mode = config.get('Mode', 'Mono8') 
         quality = config.get('CompressionQuality', 85)
         self._compressed = None
         if config['Compress']:
