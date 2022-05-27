@@ -112,19 +112,20 @@ class LabeledQueue(Queue):
 def RunCameraInterface(config, no_escape=True):
     global num_cameras
     num_cameras = num_cameras + 1
-    # Initialize objects used to communicate between processes
-    storage_frame_queue = LabeledQueue(frame_type='img') # This queue is filled by the camera acquisition process and emptied by the video writing process
-    visualization_frame_queue = LabeledQueue(frame_type='img_nonblocking') # This queue is filled by the camera acquisition process and emptied by the (visualization) primary process
+    # Initialize queues used to communicate between processes
+    # The frame_type determines whether the queues are filled with raw data, or debayered data
+    videowriter_queue = LabeledQueue(frame_type='img') 
+    viewer_queue = LabeledQueue(frame_type='img_nonblocking')
 
     do_record = config.get('RecordVideo', False)
     if do_record:
-        frame_queues = [visualization_frame_queue, storage_frame_queue]
+        frame_queues = [viewer_queue, videowriter_queue]
     else:
         print('NOT RECORDING!!!')
-        frame_queues = [visualization_frame_queue]
+        frame_queues = [viewer_queue]
 
     # We'll draing when we terminate!
-    global all_queues
+    global all_queues # needs to be global so that SIGINT can access
     all_queues.extend(frame_queues)
     signal.signal(signal.SIGINT, termination_handler)
 
@@ -133,7 +134,8 @@ def RunCameraInterface(config, no_escape=True):
     producer_finished_flags['Camera{}'.format(num_cameras)] = camera_process_finished
 
     global terminate_flag
-    camera_process = multiprocessing.Process(target=start_camera, args=(config, frame_queues, terminate_flag, camera_process_finished))
+    camera_process = multiprocessing.Process(target=start_camera, 
+        args=(config, frame_queues, terminate_flag, camera_process_finished))
     camera_process.daemon = True
     global all_processes
     all_processes['Camera{}'.format(num_cameras)] = camera_process
@@ -146,7 +148,7 @@ def RunCameraInterface(config, no_escape=True):
         vwriter_process_finished = multiprocessing.RawValue('b', True) # This signals to the main process that the video writing process has terminated
         consumer_finished_flags['Writer{}'.format(num_cameras)] = camera_process_finished
     
-        vwriter_process = multiprocessing.Process(target=start_writer, args=(config, storage_frame_queue, terminate_flag, vwriter_process_finished))
+        vwriter_process = multiprocessing.Process(target=start_writer, args=(config, videowriter_queue, terminate_flag, vwriter_process_finished))
         vwriter_process.daemon = True
         all_processes['Writer{}'.format(num_cameras)] = vwriter_process
         vwriter_process.start()     # Launch the video writing process
@@ -156,7 +158,7 @@ def RunCameraInterface(config, no_escape=True):
     pyglet_process_finished = multiprocessing.RawValue('b', True) # This signals to the main process that the camera acquisition process has terminated
     consumer_finished_flags['Pyglet{}'.format(num_cameras)] = pyglet_process_finished
 
-    pyglet_process = multiprocessing.Process(target=start_window, args=(config, visualization_frame_queue, terminate_flag, pyglet_process_finished, no_escape))
+    pyglet_process = multiprocessing.Process(target=start_window, args=(config, viewer_queue, terminate_flag, pyglet_process_finished, no_escape))
     pyglet_process.daemon = True
 
     all_processes['Pyglet{}'.format(num_cameras)] = camera_process
@@ -176,10 +178,10 @@ def main():
         'RecordVideo': True,
         'Mode': 'Bayer_RG8',
         'FilenameHeader': 'videodata',
-        'Compress': True,
+        'Compress': False,
         'LogDirectory': os.getcwd(),
         'CameraIndex': camera,
-        'ResX': 1200, 'ResY': 1024, 'FrameRate': 30,
+        'ResX': 1024, 'ResY': 768, 'FrameRate': 30,
         'CameraParams': {
             'Power Line frequency': 2, # 60 Hz
             'Gain': 10
@@ -187,9 +189,12 @@ def main():
 
     }
 
+    multiprocessing.current_process().name = "python3 GigE Main"
+    setproctitle.setproctitle(multiprocessing.current_process().name)
+
     RunCameraInterface(config)
     while True:
-        pass
+        time.sleep(0.1)
 
 
 if __name__ == '__main__':

@@ -18,7 +18,7 @@ def simple_handler(signal, frame):
 
 def start_camera(config, frame_queues, terminate_flag, done_flag):
     signal.signal(signal.SIGINT, simple_handler)
-    multiprocessing.current_process().name = "python3 Basler GigE"
+    multiprocessing.current_process().name = "python3 GigE Iface"
     setproctitle.setproctitle(multiprocessing.current_process().name)
 
     import gi
@@ -63,7 +63,8 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
 
             self._camera.set_region (0,0,self.sx,self.sy)
             self._camera.set_frame_rate (self.frame_rate)
-
+            self._camera.set_exposure_time(0.95/self.frame_rate * 1e6) # max out exposure by default
+            
             self.mode = config.get('Mode', 'Mono8')
             if self.mode not in ['Mono8', 'YUV422', 'Bayer_RG8']:
                 raise ValueError('Unsupported video mode.')
@@ -125,7 +126,7 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
 
         def debayer(self, img):
             if self.mode == 'Mono8': # no need!
-                self._rgb_img = img
+                self._rgb_img = np.frombuffer(img, np.uint8).reshape(self.sy, self.sx,1) # this is a cast!
             elif self.mode == 'Bayer_RG8':
                 img_np = np.frombuffer(img, np.uint8).reshape(self.sy, self.sx) # this is a cast
                 self._rgb_img = cv2.cvtColor(img_np, cv2.COLOR_BayerBG2BGR)

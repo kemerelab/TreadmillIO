@@ -20,7 +20,9 @@ def simple_handler(signal, frame):
 
 def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_escape):
     signal.signal(signal.SIGINT, simple_handler)
-    multiprocessing.current_process().name = "python3 USBCamera/pyglet_view"
+    multiprocessing.current_process().name = "python3 VideoView"
+    setproctitle.setproctitle(multiprocessing.current_process().name)
+
 
     import pyglet
     from pyglet.window import key
@@ -84,7 +86,7 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
                 initial_texture = 128*np.ones((self.sy, self.sx, 1), dtype='uint8')
                 self._img = pyglet.image.ImageData(self.sx,self.sy,'I',
                     initial_texture.tobytes(),pitch=-self.sx)
-            elif self.mode in ['YUV422', 'Bayer_RG8']:
+            elif self.mode in ['Bayer_RG8']:
                 initial_texture = 128*np.ones((self.sy, self.sx, 3), dtype='uint8')
                 self._img = pyglet.image.ImageData(self.sx,self.sy,'BGR',
                     initial_texture.tobytes(),pitch=-self.sx*3)
@@ -111,8 +113,6 @@ def start_window(config, visualization_frame_queue, quit_flag, done_flag, no_esc
             if self.mode == 'Mono8':
                 self._img.set_data('I', -self.sx, img.tobytes())
             elif self.mode == 'Bayer_RG8':
-                # img_np = np.frombuffer(img, np.uint8).reshape(self.sy, self.sx)
-                # converted_image = cv2.cvtColor(img_np, cv2.COLOR_BayerBG2BGR)
                 self._img.set_data('BGR', -self.sx*3, img.tobytes())
 
 
