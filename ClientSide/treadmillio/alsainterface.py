@@ -142,7 +142,7 @@ class ALSAPlaybackSystem():
 
         self.control_pipe = control_pipe
 
-        config['DeviceList'][dev_name] = normalize_output_device(config['DeviceList'][dev_name])
+        config['DeviceList'][dev_name] = normalize_alsa_output_device(config['DeviceList'][dev_name])
 
         buffer_size = config['DeviceList'][dev_name]['BufferSize']
         dtype = config['DeviceList'][dev_name]['DType']
@@ -342,7 +342,7 @@ class ALSARecordSystem():
                     print('buffer underrun {}'.format(t), file=self.xrun_logfile)
 
 
-def normalize_output_device(config):
+def normalize_alsa_output_device(config):
     config['BufferSize'] = config.get('BufferSize', DEFAULT_OUTPUT_DEVICE['BufferSize'])
     config['DType'] = config.get('DType', DEFAULT_OUTPUT_DEVICE['DType'])
     config['Device'] = config.get('HWDevice', DEFAULT_OUTPUT_DEVICE['HWDevice'])
