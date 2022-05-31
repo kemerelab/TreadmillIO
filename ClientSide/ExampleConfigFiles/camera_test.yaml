@@ -62,15 +62,15 @@ StateMachine:
 
 
 
-# Cameras:
-#   Camera1:
-#     RecordVideo: True
-#     FilenameHeader: 'MouseCam'
-#     Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
-#     CameraIndex: 1
-#     ResX: 1280 
-#     ResY: 720
-#     FrameRate: 30
-#     CameraParams:
-#       Power Line frequency: 2, # 60 Hz
-#       Gain: 10
+Cameras:
+  Camera1:
+    RecordVideo: True
+    FilenameHeader: 'MouseCam'
+    Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
+    CameraIndex: 1
+    ResX: 1280 
+    ResY: 720
+    FrameRate: 30
+    CameraParams:
+      Power Line frequency: 2, # 60 Hz
+      Gain: 10
