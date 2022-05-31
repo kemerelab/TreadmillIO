@@ -60,7 +60,7 @@ def tukey_window(N, N_overlap=None):
     return w, w[:-N_overlap], w_prime
 
 class Stimulus():
-    def __init__(self, stimulus_data, data_buffer, channel, buffer_len, gain_db, window=None):
+    def __init__(self, stimulus_data, data_buffer, channel, buffer_len, window=None):
         self.stimulus_buffer = stimulus_data
 
         self.data = data_buffer # pre-initialized matrix (tensor actually) for easy summing
@@ -71,7 +71,7 @@ class Stimulus():
         self.buffer_len = buffer_len
         self.stimulus_len = len(self.stimulus_buffer)
         self.channel = channel
-        self._gain = np.power(10, gain_db/20)
+        self._gain = 0 # np.power(10, gain_db/20)
         self._current_gain = self._gain # current_gain will allow us to track changes
 
         self._windowing = window is not None
@@ -152,9 +152,9 @@ class ALSAPlaybackSystem():
             print('Adding stimulus {}...'.format(stimulus_name))
 
             channel = data['Channel']
-            gain = data.get('OffGain', -90.0)
+            # gain = data.get('OffGain', -90.0) # I think there's no reason to make this configurable
             self.stimuli[stimulus_name] = Stimulus(data['StimData'], self.data_buf[:,:,k], 
-                                                   channel, buffer_size, gain, window=buffer_size) # default to Hanning window!
+                                                   channel, buffer_size, window=buffer_size) # default to Hanning window!
             k = k + 1
 
         ####

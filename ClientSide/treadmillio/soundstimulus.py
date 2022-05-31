@@ -9,7 +9,8 @@ import warnings
 # from functools import partial
 import pickle
 
-from multiprocessing import Process, Pipe, Value, Queue
+from multiprocessing import Process, Pipe, Value, Queue, current_process
+from setproctitle import setproctitle
 import pickle
 
 import traceback as tb
@@ -29,6 +30,9 @@ def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
 
 def run_alsa_playback_process(device_name, config, file_dir, control_pipe, log_directory, status_queue):
+    current_process().name = "python3 alsa playback"
+    setproctitle(current_process().name)
+
     status_queue.put(1)
     try: 
         playback_system = ALSAPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)
@@ -50,6 +54,9 @@ def run_alsa_playback_process(device_name, config, file_dir, control_pipe, log_d
         raise e
 
 def run_record_process(device_name, config, log_directory, status_queue):
+    current_process().name = "python3 alsa record"
+    setproctitle(current_process().name)
+    
     status_queue.put(1)
     try:
         record_system = ALSARecordSystem(device_name, config, log_directory)
@@ -70,6 +77,9 @@ def run_record_process(device_name, config, log_directory, status_queue):
 
 
 def run_network_playback_process(device_name, config, file_dir, control_pipe, log_directory, status_queue):
+    current_process().name = "python3 network audio"
+    setproctitle(current_process().name)
+    
     status_queue.put(1)
     try: 
         playback_system = NetworkPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)

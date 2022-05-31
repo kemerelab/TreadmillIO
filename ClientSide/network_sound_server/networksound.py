@@ -15,7 +15,7 @@ class NetworkSoundInterface:
     printStatements = True
     IP_address_text = None # Will use to display IP address
 
-    def __init__(self, device_config={}, stimuli={}):
+    def __init__(self, device_config={}, stimuli={}, context_manager=None):
 
         # ZMQ server connection for commands. 
         # We use a DEALER/REP architecture for reliability.
@@ -29,10 +29,17 @@ class NetworkSoundInterface:
         self.poller.register(self.command_socket, zmq.POLLIN)
 
         self.sound_controller = None
+        self.context_manager = context_manager
 
-    def create_sound_controller(self, device_config, stimuli_config, context_manager):
-        from soundstimulus import SoundStimulusController
-        self.sound_controller = context_manager.enter_context(SoundStimulusController(device_config, stimuli_config))
+    def create_sound_controller(self, device_config, stimuli_config):
+        if self.sound_controller:
+            self.reset_sound()
+
+        if self.context_manager:
+            self.sound_controller = self.context_manager.enter_context(SoundStimulusController(device_config, stimuli_config))
+        else:
+            with ExitStack() as self.context_manager:
+                self.sound_controller = self.context_manager.enter_context(SoundStimulusController(device_config, stimuli_config))
 
     def reset_sound(self):
         if self.sound_controller:
@@ -46,40 +53,43 @@ class NetworkSoundInterface:
         self.reset_sound()
         time.sleep(1)
 
-    def readMsgs(self):
-        retval = True
-        msg_list = self.poller.poll(timeout=0.01)
-        while msg_list:
-            for sock, event in msg_list:
-                if sock==self.command_socket:
-                    print('Got a command message')
-                    pickled_msg = self.command_socket.recv() # Command Socket Messages are pickled dictionaries
-                    msg = pickle.loads(pickled_msg)
-                    print("Message received: ", msg)
-                    if msg['Command'] == 'Reset':
-                        self.reset_sound()
-                        self.command_socket.send(b"Reset")
-                    elif msg['Command'] == 'Configure':
-                        # success = self.update_data_server(msg.get("DataServerAddress", None))
-                        success = True
-                        if success:
+    def main_message_loop(self):
+        should_exit = False
+        while not should_exit:
+            msg_list = self.poller.poll(timeout=1)
+            while msg_list:
+                for sock, event in msg_list:
+                    if sock==self.command_socket:
+                        print('Got a command message')
+                        pickled_msg = self.command_socket.recv() # Command Socket Messages are pickled dictionaries
+                        msg = pickle.loads(pickled_msg)
+                        print("Message received: ", msg)
+                        if msg['Command'] == 'Reset':
+                            self.reset_sound()
+                            self.command_socket.send(b"Reset")
+                            print('Sound system reset!')
+                        elif msg['Command'] == 'Configure':
+                            self.create_sound_controller(msg['DeviceConfig'], msg['Stimuli'])
                             self.command_socket.send(b"Configured")
-                        else:
-                            self.command_socket.send(b"Error")
-                    elif msg['Command'] == 'SetGain':
-                        self.command_socket.send(b"Gain Set")
+                            print('Sound system configured!')
+                        elif msg['Command'] == 'SetGain':
+                            if self.sound_controller:
+                                self.sound_controller.change_gain(msg['Stimulus'], msg['Gain'])
+                                self.command_socket.send(b"Gain Set")
+                                print('Gain change: {}:{}'.format(msg['Stimulus'], msg['Gain']))
+                            else:
+                                self.command_socket.send(b"Error")
+                        elif msg['Command'] == 'Exit':
+                            self.command_socket.send(b"Exiting")
+                            self.exit_fun()
+                            should_exit = True
+                    else:
+                        msg = sock.recv()
                         print(msg)
-                    elif msg['Command'] == 'Exit':
-                        self.command_socket.send(b"Exiting")
-                        self.exit_fun()
-                        retval = False 
-                else:
-                    msg = sock.recv()
-                    print(msg)
-            msg_list = self.poller.poll(timeout=0) # it seems like the whole point of poller
-                                                   # should be to catch all of these, but...
+                msg_list = self.poller.poll(timeout=0) # it seems like the whole point of poller
+                                                    # should be to catch all of these, but...
 
-        return retval
+        return
 
     def __del__(self):
         pass
@@ -122,16 +132,11 @@ def main():
 
     with ExitStack() as stack:
 
-        network_interface = stack.enter_context(NetworkSoundInterface())
+        network_interface = stack.enter_context(NetworkSoundInterface(context_manager=stack))
 
-        network_interface.create_sound_controller(device_config, stimuli_config, stack)
+        network_interface.create_sound_controller(device_config, stimuli_config)
 
-        while True:
-            retval = network_interface.readMsgs()
-            if retval:
-                time.sleep(0.1)
-            else:
-                break
+        network_interface.main_message_loop() # This is an infinite loop
 
         print('finishing off')
 

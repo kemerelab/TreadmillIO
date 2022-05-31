@@ -8,7 +8,6 @@ import numpy as np
 from itertools import cycle
 import os
 import glob
-from multiprocessing import Process, Pipe
 import time
 import pickle
 import warnings
@@ -31,24 +30,18 @@ DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
 
 ILLEGAL_STIMULUS_NAMES = ['StopMessage']
 
-class Stimulus():
-    def __init__(self, filename):
-        self.fs, self.stimulus_buffer = scipy.io.wavfile.read(filename)
-        # if self.stimulus_buffer.dtype != dtype:
-        #     raise(ValueError('Specified dtype for {} is {} but file is actually {}'.format(
-        #         filename, dtype, self.stimulus_buffer.dtype)))
+def load_stimulus_file(filename, dtype=None):
+    fs, stimulus_buffer = scipy.io.wavfile.read(filename)
+    if dtype:
+        if stimulus_buffer.dtype != dtype:
+            raise(ValueError('Specified dtype for {} is {} but file is actually {}'.format(
+                filename, dtype, stimulus_buffer.dtype)))
 
-        if (self.stimulus_buffer.ndim > 1):
-            raise(ValueError('Stimulus {} is not monaural'.format(filename)))
+    if (stimulus_buffer.ndim > 1):
+        raise(ValueError('Stimulus {} is not monaural'.format(filename)))
 
-    @property
-    def gain(self):
-        return self._gain
-    
-    @gain.setter
-    def gain(self, gain):
-        self._gain = gain
-        # print('Gain: {}'.format(20*np.log10(gain))) # TODO: Add this as debug info
+    return fs, stimulus_buffer
+
 
 class NetworkPlaybackSystem():
     def __init__(self, dev_name, config, file_root, control_pipe, log_directory=None):
@@ -84,8 +77,9 @@ class NetworkPlaybackSystem():
             else:
                 self.num_stimuli += 1
 
-
         channel_labels = config['DeviceList'][dev_name]['ChannelLabels']
+
+        stim_fs_dict = {}
         k = 0
         for stimulus_name, stimulus in StimuliList.items():
             if stimulus_name in ILLEGAL_STIMULUS_NAMES:
@@ -93,24 +87,35 @@ class NetworkPlaybackSystem():
 
             print('Adding stimulus {}...'.format(stimulus_name))
             if stimulus.get('Device', 'Default1') in channel_labels:
+                channel = config['DeviceList'][dev_name]['ChannelLabels'][stimulus.get('Device','Default1')]
+
                 if stimulus['Type'] == 'Bundle':
                     root_dir = stimulus.get('Directory', './')
                     filelist = sort_bundled_sounds(glob.glob(os.path.join(file_root, root_dir, stimulus['Filename'])))
                     for i, filepath in enumerate(filelist):
-                        self.stimuli['-'.join([stimulus_name, str(i)])] = Stimulus(filepath) 
+                        stim_key = '-'.join([stimulus_name, str(i)])
+                        stim_fs_dict[filepath] , stim_data_buffer = load_stimulus_file(filepath)
+                        self.stimuli[stim_key] = {
+                            'Channel': channel,
+                            'StimData': stim_data_buffer} 
                         k = k + 1
                 else:
                     filename = os.path.join(file_root, stimulus['Filename'])
-                    self.stimuli[stimulus_name] = Stimulus(filename) 
+                    stim_fs_dict[filename] , stim_data_buffer = load_stimulus_file(filename)
+                    self.stimuli[stimulus_name] = {
+                        'Channel': channel,
+                        'StimData': stim_data_buffer} 
                     k = k + 1
             else:
                 print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
 
         # Check to make sure all the sampling rates came out the same
-        self.fs = set([stim.fs for _, stim in self.stimuli.items()])
+        self.fs = set([fs for _, fs in stim_fs_dict.items()])
+        for filename, fs in stim_fs_dict.items():
+            print('{}: fs = {}'.format(filename, fs))
         if len(self.fs) > 1:
-            for _, stim in self.stimuli.items():
-                print('{}: fs = {}'.format(stim.filename, stim.fs))
+            for filename, fs in stim_fs_dict.items():
+                print('{}: fs = {}'.format(filename, fs))
             raise(ValueError('Not all stimuli had the same sampling rate.'))
         else:
             self.fs = self.fs.pop()
@@ -125,10 +130,14 @@ class NetworkPlaybackSystem():
 
 
         # Open and initialize network device
-        buffer_size = config['DeviceList'][dev_name]['BufferSize']
-        dtype = config['DeviceList'][dev_name]['DType']
-        remote_device = config['DeviceList'][dev_name]['RemoteHWDevice']
-        num_channels = config['DeviceList'][dev_name]['NChannels']
+        remote_device_config = {
+            'BufferSize': config['DeviceList'][dev_name]['BufferSize'],
+            'DType': config['DeviceList'][dev_name]['DType'],
+            'NChannels': config['DeviceList'][dev_name]['NChannels'],
+            'HWDevice': config['DeviceList'][dev_name]['RemoteHWDevice'],
+            'ChannelLabels': channel_labels,
+            'FS': self.fs
+        }
 
         self.sound_server_endpoint = config['DeviceList'][dev_name]['SoundServer']
 
@@ -140,11 +149,13 @@ class NetworkPlaybackSystem():
 
         retval = self.send_zmq_command({'Command':'Reset'}, b'Reset')
         if not retval:
-            raise ValueError("Error in communicating with Sound Server. Is server online and running?")
+            raise ValueError("Error sending 'Reset' to Sound Server. Is server online and running?")
 
         retval = self.send_zmq_command({'Command':'Configure', 
-                                        'DeviceConfig': config['DeviceList'][dev_name],
-                                        'Stimuli': StimuliList}, b'Configured', 2)
+                                        'DeviceConfig': remote_device_config,
+                                        'Stimuli': self.stimuli}, b'Configured', 2)
+        if not retval:
+            raise ValueError("Error sending 'Configure' to Sound Server. Is server online and running?")
 
 
         ######
@@ -160,12 +171,14 @@ class NetworkPlaybackSystem():
         while True:
             if (self.sound_server_context.poll(self.REQUEST_TIMEOUT) & zmq.POLLIN) != 0:
                 reply = self.sound_server_context.recv()
-                print(reply)
                 if (reply == success_reply):
                     return_value = True
                     break
                 else:
+                    print(reply)
                     continue
+            if wait > 0:
+                time.sleep(wait)
 
             retries_left -= 1
             # Socket is confused. Close and remove it.
@@ -180,8 +193,6 @@ class NetworkPlaybackSystem():
             self.sound_server_context = context.socket(zmq.REQ)
             self.sound_server_context.connect(self.sound_server_endpoint)
             self.sound_server_context.send(pickle.dumps(msg))
-            if wait > 0:
-                time.sleep(wait)
             
 
         return return_value
@@ -189,14 +200,16 @@ class NetworkPlaybackSystem():
 
     def __del__(self):
         if self.sound_server_context:
-            retval = self.send_zmq_command({'Command':'Exit'}, b'Exiting')
+            retval = self.send_zmq_command({'Command':'Reset'}, b'Reset', 0.1)
         self.sound_server_context.close()
 
 
     def set_gain(self, stimulus_key, gain):
-        print('Set gain {}:{}', stimulus_key, gain)
+        print('Set gain {}:{}'.format(stimulus_key, gain))
         if self.sound_server_context:
-            retval = self.send_zmq_command({'Command':'SetGain', stimulus_key: gain}, b'Gain Set')
+            retval = self.send_zmq_command({'Command':'SetGain', 'Stimulus': stimulus_key, 'Gain': gain}, b'Gain Set')
+            if not retval:
+                raise ValueError("Error sending 'SetGain' to Sound Server. Is server online and running?")
 
 
     def play(self):
@@ -204,7 +217,7 @@ class NetworkPlaybackSystem():
         with open(self.xrun_filename, 'w') as xrun_logfile:
             self.running = True
             while self.running:
-                while self.control_pipe.poll(): # is this safe?
+                while self.control_pipe.poll(0.1): # is this safe?
                     msg = self.control_pipe.recv_bytes()
                     commands = pickle.loads(msg)
                     # if 'StopMessage' in commands:
@@ -216,8 +229,9 @@ class NetworkPlaybackSystem():
                                 self.set_gain(key, gain)
                             elif key is not None: # pass if key is None
                                 raise ValueError('Unknown stimulus {}.'.format(key))
-                    except:
+                    except Exception as e:
                         print('Exception: ', commands)
+                        raise e
 
 
         if self.running == False:

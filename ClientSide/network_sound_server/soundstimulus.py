@@ -8,7 +8,9 @@ import socket
 import signal
 import pickle
 
-from multiprocessing import Process, Pipe, Value, Queue, Event
+from multiprocessing import Process, Pipe, Queue, Event, current_process
+from setproctitle import setproctitle
+
 import pickle
 
 import traceback as tb
@@ -22,6 +24,9 @@ def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
 
 def run_playback_process(device_config, stimuli_config, control_pipe, stop_event, status_queue):
+    current_process().name = "python3 alsa playback"
+    setproctitle(current_process().name)
+
     status_queue.put(1)
     try: 
         playback_system = ALSAPlaybackSystem(device_config, stimuli_config, control_pipe)
@@ -80,8 +85,7 @@ class SoundStimulusController():
 
     def change_gain(self, stim_key, gain):
         if self.alsa_playback_pipe:
-            self.alsa_playback_pipe.send_bytes(pickle.dumps({stim_key: db2lin(gain)}))
-            # self.alsa_playback_pipe.send_bytes(pickle.dumps({self.name: gain}))
+            self.alsa_playback_pipe.send_bytes(pickle.dumps({stim_key: gain}))
 
 
     def send_stop_event(self):
@@ -98,7 +102,7 @@ class SoundStimulusController():
         if exc_type:
             print('SoundStimulController: exiting because of exception <{}>'.format(
                 exc_type.__name__))
-            tb.print_tb(exc_traceback)
+            # tb.print_tb(exc_traceback)
 
         self._stop_event.set()
         print('SoundStimulController waiting for ALSA processes to join. TODO: Handle other than KeyboardInterrupt!')
