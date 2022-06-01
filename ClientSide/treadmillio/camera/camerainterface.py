@@ -59,9 +59,12 @@ def start_camera(config, frame_queues, terminate_flag, done_flag):
 
             self.sy = config['ResY']
             self.sx = config['ResX']
+            self.offset_x = config.get('OffsetX',0)
+            self.offset_y = config.get('OffsetY',0)
+
             self.frame_rate = config['FrameRate']
 
-            self._camera.set_region (0,0,self.sx,self.sy)
+            self._camera.set_region (self.offset_x,self.offset_y,self.sx,self.sy)
             self._camera.set_frame_rate (self.frame_rate)
             self._camera.set_exposure_time(0.95/self.frame_rate * 1e6) # max out exposure by default
             
