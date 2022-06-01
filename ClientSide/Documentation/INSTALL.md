@@ -164,6 +164,10 @@ before Aravis could get data from it!**
 
 Now, install the python packages need for the submodule.
 
+`sudo apt install python3-opencv`
+
+(I hate to depend on OpenCV, but it seems to be best for de-bayering color sensor raw data.)
+
 `pip3 install pyglet simplejpeg`
 
 #### Test
