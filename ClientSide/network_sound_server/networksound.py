@@ -106,22 +106,23 @@ class NetworkSoundInterface:
 
 def main():
 
+    fs, stimulus_buffer = scipy.io.wavfile.read('/home/ckemere/Code/TreadmillIO/ClientSide/Sounds/48kHz/tone_cloud_short.wav')
+
     device_config = {
         'HWDevice': 'pulse', #'hw:CARD=SoundCard,DEV=0'
         'NChannels': 2,
         'ChannelLabels': {
             'Speaker1': 0,
             'Speaker2': 1
-        }
+        },
+        'FS': fs
     }
-
-    fs, stimulus_buffer = scipy.io.wavfile.read('/home/ckemere/Code/TreadmillIO/ClientSide/Sounds/48kHz/tone_cloud_short.wav')
 
     stimuli_config = {
         'RightEarSound': {
             'StimData': stimulus_buffer,
             'BaselineGain': 0.0,
-            'Channel': 0
+            'Channel': 1 
         }
     }
 

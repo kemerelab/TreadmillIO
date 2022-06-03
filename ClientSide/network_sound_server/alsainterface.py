@@ -26,7 +26,7 @@ DEFAULT_OUTPUT_DEVICE = {'Type': 'Output',
                          'NChannels': 2,
                          'NPeriods': 4,
                          'DType': 'int16',
-                         'BufferSize': 32,
+                         'BufferSize': 256,
                          'FS': 48000, 
                          'ChannelLabels': {'Default1': 0, 'Default2': 1}}
 
