@@ -23,43 +23,45 @@ StateMachine:
     LeftSilence:
       Type: 'SetSoundState'
       Params:
-        RightEarSound: 'Off'
-        LeftEarSound: 'On'
+        RightEarSound: 'On'
+        LeftEarSound: 'Off'
       NextState:
         LeftSound:
           ConditionType: 'ElapsedTime'
-          Duration: 1000
+          Duration: 30000
           Priority: 1
     LeftSound:
       Type: 'SetSoundState'
       Params:
-        RightEarSound: 'On'
-        LeftEarSound: 'Off'
+        RightEarSound: 'Off'
+        LeftEarSound: 'On'
       NextState:
         LeftSilence:
           ConditionType: 'ElapsedTime'
-          Duration: 1000
+          Duration: 5000
           Priority: 1
 
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds/48kHz'
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
   StimuliList:
     RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'tone_cloud_short.wav'
-      BaselineGain: -3.0
-      Device: 'Speaker1' # or single device, or list of devices
+      BaselineGain: -20.0
+      Device: 'Speaker2' # or single device, or list of devices
     LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
       Filename: 'tone_4kHz.wav'
       BaselineGain: -20.0
-      Device: 'Speaker2'
+      Device: 'Speaker1'
   DeviceList:
     Output1:
       Type: 'NetworkOutput' # Input or Output
-      RemoteHWDevice: 'pulse' #'hw:CARD=SoundCard,DEV=0'
+      SoundServer: 'tcp://localhost:7342' # 'tcp://192.168.1.139:7342'
+      RemoteHWDevice: 'pulse' # 'hw:CARD=sndrpihifiberry,DEV=0'
       NChannels: 2
+      BufferSize: 4096
       ChannelLabels:
         Speaker1: 0
         Speaker2: 1
