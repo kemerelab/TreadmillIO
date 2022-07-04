@@ -1,6 +1,7 @@
-# This config file is intendend to do a simple test of sound playback.
-# If it is working, the sound should switch from the left ear to the right
-# each second, with pink noise on the right and a 3 kHz tone on the left.
+# This config file is intendend to do a simple test of sound playback using the network interface.
+# You first need to run treadmillio_sound_server either on localhost (default) or on a remote
+# (in which case the SoundServer field must be updated).
+
 
 Preferences:
   HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
