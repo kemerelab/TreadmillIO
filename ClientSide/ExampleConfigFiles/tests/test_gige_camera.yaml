@@ -66,9 +66,11 @@ GigE-Cameras:
   Camera1:
     RecordVideo: True
     FilenameHeader: 'MouseCam'
-    Compress: True # Encode to MJPEG
+    Compress: True # Encode to MJPEG. Otherwise we store raw video~
     CameraIndex: 1
     ResX: 1024 
     ResY: 768
+    OffsetX: 0
+    OffsetY: 0
     FrameRate: 30
-    # Mode: 'Mono8'
+    Mode: 'Mono8' # Currently only this or Bayer_RG8 are supported
