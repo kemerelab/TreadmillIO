@@ -113,6 +113,9 @@ class SoundStimulusController():
         self._playback_processes = []
         self._record_processes = []
 
+        self.playback_pipes = {}
+        self.device_map = {}
+
 
         # Start the ALSA playback and record processes.
         #  - ALSA playback will also load all the sound files!
@@ -121,7 +124,8 @@ class SoundStimulusController():
             _startup_queue = Queue()
             for dev_name, dev in sound_config['DeviceList'].items():
                 if dev['Type'] == 'Output':
-                    _playback_read_pipe, self.playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
+                    _playback_read_pipe, _playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
+                    self.playback_pipes[dev_name] = _playback_pipe
                     new_process = Process(target=run_alsa_playback_process, args=(dev_name, sound_config, 
                                                 sound_config['AudioFileDirectory'], _playback_read_pipe, log_directory, _startup_queue))
                     self._playback_processes.append(new_process)
@@ -135,6 +139,13 @@ class SoundStimulusController():
                             new_process.join()
                             raise(RuntimeError("An error occured in starting the ALSA playback process/object."))
                         status = _startup_queue.get()
+
+                    # Go through enumerated channels and construct a dictionary mapping channel labels to output devices.
+                    # We'll use this to tell sound stimuli which pipe to use.
+                    for output_device, _ in dev['ChannelLabels'].items():
+                        if output_device in self.device_map:
+                            raise(ValueError('Duplicate channel name ({}) in device_map creation'.format(output_device)))
+                        self.device_map[output_device] = dev_name
 
                 elif dev['Type'] == 'Input':
                     new_process = Process(target=run_record_process, args=(dev_name, dev, log_directory, _startup_queue))
@@ -152,7 +163,8 @@ class SoundStimulusController():
                         status = _startup_queue.get()
 
                 elif dev['Type'] == 'NetworkOutput':
-                    _playback_read_pipe, self.playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
+                    _playback_read_pipe, _playback_pipe = Pipe()  # we'll write to p_master from _this_ process and the ALSA process will read from _playback_read_pipe
+                    self.playback_pipes[dev_name] = _playback_pipe
                     new_process = Process(target=run_network_playback_process, args=(dev_name,
                                           sound_config, 
                                           sound_config['AudioFileDirectory'], 
@@ -169,6 +181,13 @@ class SoundStimulusController():
                             new_process.join()
                             raise(RuntimeError("An error occured in starting the Network Output playback process/object."))
                         status = _startup_queue.get()
+
+                    # Go through enumerated channels and construct a dictionary mapping channel labels to output devices.
+                    # We'll use this to tell sound stimuli which pipe to use.
+                    for output_device, _ in dev['ChannelLabels'].items():
+                        if output_device in self.device_map:
+                            raise(ValueError('Duplicate channel name ({}) in device_map creation'.format(output_device)))
+                        self.device_map[output_device] = dev_name
 
         # Get stimuli parameters
         StimuliList = look_for_and_add_stimulus_defaults(sound_config)
@@ -197,15 +216,16 @@ class SoundStimulusController():
         self.valid = True # we won't be valid unless we made it here.
 
     def add_stimulus(self, stimulus_name, stimulus, track_length, track_topology, verbose=0):
+        _playback_pipe = self.playback_pipes[self.device_map[stimulus['Device']]]
         # Add to type-specific mapping
         stimulus['Name'] = stimulus_name
         if stimulus['Type'] == 'Background':
-            new_stimulus = SoundStimulus(stimulus_name, stimulus, self.playback_pipe, verbose)
+            new_stimulus = SoundStimulus(stimulus_name, stimulus, _playback_pipe, verbose)
             self.BackgroundSounds[stimulus_name] = new_stimulus
             new_stimulus.change_gain(new_stimulus.baseline_gain)
             #visualization.add_zone_position(0, VirtualTrackLength, fillcolor=stimulus['Color'], width=0.5, alpha=0.75)
         elif stimulus['Type'] == 'Beep':
-            new_stimulus = BeepSound(stimulus_name, stimulus, self.playback_pipe, verbose)
+            new_stimulus = BeepSound(stimulus_name, stimulus, _playback_pipe, verbose)
             self.Beeps[stimulus_name] = new_stimulus
         elif stimulus['Type'] == 'Localized':
             if not track_length:
@@ -213,7 +233,7 @@ class SoundStimulusController():
             # visualization.add_zone_position(stimulus['CenterPosition'] - stimulus['Modulation']['Width']/2, 
             #                     stimulus['CenterPosition'] + stimulus['Modulation']['Width']/2, 
             #                     fillcolor=stimulus['Color'])
-            new_stimulus = LocalizedSound(track_length, track_topology, stimulus_name, stimulus, self.playback_pipe, verbose)
+            new_stimulus = LocalizedSound(track_length, track_topology, stimulus_name, stimulus, _playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
         elif stimulus['Type'] == 'MultilapBackground':
             if not track_length:
@@ -221,10 +241,10 @@ class SoundStimulusController():
             if track_topology != 'Ring':
                 raise(Warning('SoundStimulus: Unlikely that MultilapBackground" will work as expected with non-Ring topology.'))
             # visualization.add_zone_position(??? , ???, fillcolor=stimulus['Color'])
-            new_stimulus = MultilapBackgroundSound(track_length, stimulus_name, stimulus, self.playback_pipe, verbose)
+            new_stimulus = MultilapBackgroundSound(track_length, stimulus_name, stimulus, _playback_pipe, verbose)
             self.LocalizedStimuli[stimulus_name] = new_stimulus
         elif stimulus['Type'] == 'Bundle':
-            new_stimulus = BundledSound(stimulus_name, stimulus, self.playback_pipe, verbose)
+            new_stimulus = BundledSound(stimulus_name, stimulus, _playback_pipe, verbose)
             self.BundledSounds[stimulus_name] = new_stimulus
             new_stimulus.change_gain(new_stimulus.baseline_gain)
         else:
@@ -254,18 +274,22 @@ class SoundStimulusController():
         for _, beep in self.Beeps.items():
             new_beep_value = beep.update(time)
             if new_beep_value is not None:
-                update_dict[beep.name] = db2lin(new_beep_value)
-        if update_dict:
-            self.playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
+                beep.change_gain_raw(db2lin(new_beep_value))
+        # TODO: Package changes into dict to send all at once?
+                #update_dict[beep.name] = db2lin(new_beep_value)
+        # if update_dict:
+        #     self.playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
     def update_localized(self, pos, unwrapped_pos):
         update_dict = {}
         for _, sound in self.LocalizedStimuli.items():
             pos_gain =  sound.pos_update_gain(pos, unwrapped_pos)
             if pos_gain is not None:
-                update_dict[sound.name] =  db2lin(pos_gain)
-        if update_dict:
-            self.playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
+                sound.change_gain_raw(db2lin(pos_gain))
+        # TODO: Package changes into dict to send all at once?
+        #         update_dict[sound.name] =  db2lin(pos_gain)
+        # if update_dict:
+        #     self.playback_pipe.send_bytes(pickle.dumps(update_dict)) # update all at once!
 
     def update_stimulus(self, stimulus, value):
         # TODO: error checking
