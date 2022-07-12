@@ -1,0 +1,118 @@
+Info: # "Info" configuration options can be overridden by command line options
+  MouseID: CameraTest # Used to name saved data file
+  Note: '' # Added in a block at the start of saved data file
+  Session: '' # This is added to default (date and time)
+  TaskType: Camera Test Project
+
+Preferences:
+  HeartBeat: 2000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: False
+  EnableSound: False
+
+GPIO: # A list of GPIO pins used in the task
+  Reward1:
+    Number: 3 # This is the pin number from the board
+    Type: 'Output' # Pin type is either 'Input' or 'Output'; special cases could be 'Input_Pulldown' or 'Input_Pullup' or 'Input_Disable' 
+                           # (where the pull-down/pull-up resistors are enabled).
+    #Power: True # The 'Power' option is for 'Input' type GPIOs. It configures whether the Aux-GPIO is set to high, 
+    #            # enabling the power channel of the audio jack.
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  Reward2:
+    Number: 4
+    Type: 'Output'
+    Power: True
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+  Poke1:
+    Number: 1
+    Type: 'INPUT'
+    Power: True
+  Poke2:
+    Number: 2
+    Type: 'INPUT'
+    Power: True
+
+Maze:
+  Type: 'StateMachine' 
+
+StateMachine:
+  States:
+    InitializePump1:
+      Type: 'SetGPIO'
+      Params:
+          Pin: 'Reward1'
+          Value: 0
+      NextState: 'InitializePump1'
+    InitializePump2:
+      Type: 'SetGPIO'
+      Params:
+          Pin: 'Reward2'
+          Value: 0
+      NextState: 'Reward2-Waiting'
+    Reward2-Waiting: # check for poke at port 1, reward port 2 if so
+      Type: 'Base'
+      NextState:
+        Reward2-Trigger: # dispense reward if lick 
+          ConditionType: 'GPIO'
+          Pin: 1 # 'Poke1'
+          Value: True
+          Priority: 1
+    Reward2-Trigger: # dispense reward
+      Type: 'SetGPIO'
+      Params:
+          Pin: 'Reward2'
+          Value: 1
+      NextState: 
+        Reward2-Off:
+          ConditionType: 'ElapsedTime'
+          Duration: 100 # pump needs 100 ms to recognize logic level change
+    Reward2-Off: # dispense reward
+      Type: 'SetGPIO'
+      Params:
+          Pin: 'Reward2'
+          Value: 0
+      NextState: 
+        Reward1-Waiting:
+          ConditionType: 'ElapsedTime'
+          Duration: 100 # pump needs 100 ms to recognize logic level change
+    Reward1-Waiting: # check for poke at port 2, reward port 1 if so
+      Type: 'Base'
+      NextState:
+        Reward1-Trigger: # dispense reward if lick 
+          ConditionType: 'GPIO'
+          Pin: 2 #'Poke2'
+          Value: True
+          Priority: 1
+    Reward1-Trigger: # dispense reward
+      Type: 'SetGPIO'
+      Params:
+          Pin: 'Reward1'
+          Value: 1
+      NextState: 
+        Reward1-Off:
+          ConditionType: 'ElapsedTime'
+          Duration: 100 # pump needs 100 ms to recognize logic level change
+    Reward1-Off: # dispense reward
+      Type: 'SetGPIO'
+      Params:
+          Pin: 'Reward1'
+          Value: 0
+      NextState: 
+        Reward2-Waiting:
+          ConditionType: 'ElapsedTime'
+          Duration: 100 # pump needs 100 ms to recognize logic level change
+
+# Cameras:
+#   Camera1:
+#     RecordVideo: True
+#     FilenameHeader: 'MouseCam'
+#     Compress: False # Sets whether to transcode the MJPEG which comes from the camera to H.264
+#     CameraIndex: 1
+#     ResX: 1280 
+#     ResY: 720
+#     FrameRate: 30
+#     CameraParams:
+#       Power Line frequency: 2, # 60 Hz
+#       Gain: 10

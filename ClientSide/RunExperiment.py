@@ -231,6 +231,21 @@ with ExitStack() as stack:
         for cameraname, camera in Config['Cameras'].items():
             shared_termination_flag = RunCameraInterface(camera) # this starts a bunch of processes
 
+    # ------------------- Webcam Video Recording. ------------------------------------------------------------------
+    if 'GigE-Cameras' in Config:
+        from treadmillio.camera.gigecam import RunCameraInterface
+        if DoLogCommands:
+            for cameraname, camera in Config['GigE-Cameras'].items():
+                camera['LogDirectory'] = log_directory
+        else:
+            for cameraname, camera in Config['GigE-Cameras'].items():
+                if camera['RecordVideo']:
+                    print('Over-riding camera configuration to not record video or timestamps!!!')
+                camera['RecordVideo'] = False
+
+        for cameraname, camera in Config['GigE-Cameras'].items():
+            shared_termination_flag = RunCameraInterface(camera) # this starts a bunch of processes
+
 
     # TODO: Figure out how to handle errors below. The shared termination flag should work, but it doesn't
     
