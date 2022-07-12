@@ -1,0 +1,77 @@
+# This config file is intendend to do a simple test of of the random state transition.
+# If it is working, there should be a pattern where the first 3 GPIOs randomly light up.
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: True
+  EnableSound: False # Not really needed
+
+GPIO: # A list of GPIO pins used in the task
+  LED1:
+    Number: 1
+    Type: 'Output'
+    Mirror: True # We can use the IO board LEDs for testing
+  LED2:
+    Number: 2
+    Type: 'Output'
+    Mirror: True # We can use the IO board LEDs for testing
+  LED3:
+    Number: 3
+    Type: 'Output'
+    Mirror: True # We can use the IO board LEDs for testing
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    AllOff1:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED1', Value: 0}
+      NextState: 'AllOff2'
+    AllOff2:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED2', Value: 0}
+      NextState: 'AllOff3'
+    AllOff3:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED3', Value: 0}
+      NextState: 'RandomTransition'
+    RandomTransition:
+      Type: 'Base' # This is a state that does nothing
+      NextState:
+        LED1On:
+          ConditionType: 'Random'
+          RandomPriority: 3.0 # multipled by rand() to give priority (higher wins)
+        LED2On:
+          ConditionType: 'Random'
+          RandomPriority: 1.0
+        LED3On:
+          ConditionType: 'Random'
+          RandomPriority: 1.0    
+    LED1On:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED1', Value: 1}
+      NextState: {LED1Off: {ConditionType: 'ElapsedTime', Duration: 500}}
+    LED1Off:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED1', Value: 0}
+      NextState: {RandomTransition: {ConditionType: 'ElapsedTime', Duration: 100}}
+    LED2On:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED2', Value: 1}
+      NextState: {LED2Off: {ConditionType: 'ElapsedTime', Duration: 500}}
+    LED2Off:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED2', Value: 0}
+      NextState: {RandomTransition: {ConditionType: 'ElapsedTime', Duration: 100}}
+    LED3On:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED3', Value: 1}
+      NextState: {LED3Off: {ConditionType: 'ElapsedTime', Duration: 500}}
+    LED3Off:
+      Type: 'SetGPIO'
+      Params: {Pin: 'LED3', Value: 0}
+      NextState: {RandomTransition: {ConditionType: 'ElapsedTime', Duration: 100}}
+        

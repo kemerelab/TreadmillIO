@@ -1,12 +1,12 @@
 import time
-from subprocess import Popen, DEVNULL
+# from subprocess import Popen, DEVNULL
 
-import glob
-import os
+# import glob
+# import os
 import warnings
-import socket
-import signal
-from functools import partial
+# import socket
+# import signal
+# from functools import partial
 import pickle
 
 from multiprocessing import Process, Pipe, Value, Queue
@@ -16,12 +16,12 @@ import traceback as tb
 
 from .alsainterface import ALSAPlaybackSystem, ALSARecordSystem
 from .alsainterface import normalize_output_device, normalize_input_device, look_for_and_add_stimulus_defaults
-from .alsainterface import sort_bundled_sounds
+# from .alsainterface import sort_bundled_sounds
 
 import cProfile
 
 import math
-import numba
+# import numba
 
 def db2lin(db_gain):
     return 10.0 ** (db_gain * 0.05)
