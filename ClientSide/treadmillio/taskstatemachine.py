@@ -65,6 +65,7 @@ class TaskState:
     def __init__(self, label, state_config, io_interface):
         self.Type = None
         self.label = label
+        self.print_entry = state_config.get('PrintEntry', False)
 
         #print(state_config)
 
@@ -192,6 +193,8 @@ class TaskState:
             return self.next_state
 
     def on_entrance(self, logger=None):
+        if self.print_entry:
+            print('Current state: ', self.label)
         if self.render_viewer and self._p_viewer is None:
             from .viewer import launch_viewer
             self._viewer_conn, self._p_viewer = launch_viewer(self.Type)

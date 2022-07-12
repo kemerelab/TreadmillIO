@@ -52,6 +52,7 @@ StateMachine:
           RandomPriority: 1.0    
     LED1On:
       Type: 'SetGPIO'
+      PrintEntry: True # This will make sure that entry to the state is logged
       Params: {Pin: 'LED1', Value: 1}
       NextState: {LED1Off: {ConditionType: 'ElapsedTime', Duration: 500}}
     LED1Off:
@@ -60,6 +61,7 @@ StateMachine:
       NextState: {RandomTransition: {ConditionType: 'ElapsedTime', Duration: 100}}
     LED2On:
       Type: 'SetGPIO'
+      PrintEntry: True
       Params: {Pin: 'LED2', Value: 1}
       NextState: {LED2Off: {ConditionType: 'ElapsedTime', Duration: 500}}
     LED2Off:
@@ -68,6 +70,7 @@ StateMachine:
       NextState: {RandomTransition: {ConditionType: 'ElapsedTime', Duration: 100}}
     LED3On:
       Type: 'SetGPIO'
+      PrintEntry: True
       Params: {Pin: 'LED3', Value: 1}
       NextState: {LED3Off: {ConditionType: 'ElapsedTime', Duration: 500}}
     LED3Off:
