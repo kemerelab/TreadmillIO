@@ -207,22 +207,19 @@ class NetworkPlaybackSystem():
 
 
     def play(self, stop_event):
-        while self.control_pipe.poll(0.1) and ~stop_event.is_set(): # is this safe?
-            msg = self.control_pipe.recv_bytes()
-            commands = pickle.loads(msg)
-            try:
-                for key, gain in commands.items():
-                    if key in self.stimuli:
-                        self.set_gain(key, gain)
-                    elif key is not None: # pass if key is None
-                        raise ValueError('Unknown stimulus {}.'.format(key))
-            except Exception as e:
-                print('Exception: ', commands)
-                raise e
-
-
-        if self.running == False:
-            print('SIGINT flag changed.')
+        while ~stop_event.is_set():
+          while self.control_pipe.poll(0.1):
+              msg = self.control_pipe.recv_bytes()
+              commands = pickle.loads(msg)
+              try:
+                  for key, gain in commands.items():
+                      if key in self.stimuli:
+                          self.set_gain(key, gain)
+                      elif key is not None: # pass if key is None
+                          raise ValueError('Unknown stimulus {}.'.format(key))
+              except Exception as e:
+                  print('Exception: ', commands)
+                  raise e
 
 def normalize_network_output_device(config):
     config['BufferSize'] = config.get('BufferSize', DEFAULT_OUTPUT_DEVICE['BufferSize'])
