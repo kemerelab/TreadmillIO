@@ -82,7 +82,7 @@ def run_network_playback_process(device_name, config, file_dir, control_pipe, st
     
     status_queue.put(1)
     try: 
-        playback_system = NetworkPlaybackSystem(device_name, config, file_dir, control_pipe, log_directory)
+        playback_system = NetworkPlaybackSystem(device_name, config, file_dir, control_pipe)
     except Exception as e:
         status_queue.put(-1)
         status_queue.close()
