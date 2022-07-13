@@ -79,8 +79,8 @@ class NetworkPlaybackSystem():
             if stimulus_name in ILLEGAL_STIMULUS_NAMES:
                 raise(ValueError('{} is an illegal name for a stimulus.'.format(stimulus_name)))
 
-            print('Adding stimulus {}...'.format(stimulus_name))
             if stimulus.get('Device', 'Default1') in channel_labels:
+                print('Adding stimulus {}...'.format(stimulus_name))
                 channel = config['DeviceList'][dev_name]['ChannelLabels'][stimulus.get('Device','Default1')]
 
                 if stimulus['Type'] == 'Bundle':
@@ -100,8 +100,8 @@ class NetworkPlaybackSystem():
                         'Channel': channel,
                         'StimData': stim_data_buffer} 
                     k = k + 1
-            else:
-                print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
+            # else:
+            #     print('When loading stimuli, {} not found in list of SpeakerChannels for device {}'.format(stimulus.get('Device','Default1'), dev_name))
 
         # Check to make sure all the sampling rates came out the same
         self.fs = set([fs for _, fs in stim_fs_dict.items()])
@@ -143,7 +143,7 @@ class NetworkPlaybackSystem():
 
         retval = self.send_zmq_command({'Command':'Reset'}, b'Reset')
         if not retval:
-            raise ValueError("Error sending 'Reset' to Sound Server. Is server online and running?")
+            raise ValueError("Error sending 'Reset' to Sound Server. Is server online and running?".format(self.sound_server_endpoint))
 
         retval = self.send_zmq_command({'Command':'Configure', 
                                         'DeviceConfig': remote_device_config,
