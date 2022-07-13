@@ -9,7 +9,7 @@ import warnings
 # from functools import partial
 import pickle
 
-from multiprocessing import Process, Pipe, Value, Queue, current_process
+from multiprocessing import Process, Pipe, Event, Queue, current_process
 from setproctitle import setproctitle
 import pickle
 
@@ -76,7 +76,7 @@ def run_record_process(device_name, config, log_directory, status_queue):
         raise e
 
 
-def run_network_playback_process(device_name, config, file_dir, control_pipe, log_directory, status_queue):
+def run_network_playback_process(device_name, config, file_dir, control_pipe, stop_event, status_queue):
     current_process().name = "python3 network audio"
     setproctitle(current_process().name)
     
@@ -93,10 +93,9 @@ def run_network_playback_process(device_name, config, file_dir, control_pipe, lo
     try:
         # cProfile.runctx('playback_system.play()', globals(), locals(), "results.prof") # useful for debugging
         print('Playback starting')
-        playback_system.play()
+        playback_system.play(stop_event)
     except KeyboardInterrupt:
         print('Caught KeyboardInterrupt in Network playback process')
-        playback_system.running = False # I don't think this does anything
     except Exception as e:
         raise e
 
@@ -115,6 +114,8 @@ class SoundStimulusController():
 
         self.playback_pipes = {}
         self.device_map = {}
+
+        self._stop_event = Event()
 
 
         # Start the ALSA playback and record processes.
@@ -169,7 +170,7 @@ class SoundStimulusController():
                                           sound_config, 
                                           sound_config['AudioFileDirectory'], 
                                           _playback_read_pipe, 
-                                          log_directory, _startup_queue))
+                                          self._stop_event, _startup_queue))
                     self._playback_processes.append(new_process)
                     new_process.daemon = True
                     new_process.start()     # Launch the sound process
@@ -314,6 +315,7 @@ class SoundStimulusController():
         return self
 
     def __exit__(self, exc_type, exc_value, exc_traceback):
+        self._stop_event.set()
         print('SoundStimulController: exiting because of exception <{}>'.format(exc_type.__name__))
         tb.print_tb(exc_traceback)
 

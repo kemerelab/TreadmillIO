@@ -44,15 +44,9 @@ def load_stimulus_file(filename, dtype=None):
 
 
 class NetworkPlaybackSystem():
-    def __init__(self, dev_name, config, file_root, control_pipe, log_directory=None):
+    def __init__(self, dev_name, config, file_root, control_pipe):
         self.running = False
         self.adevice = None
-
-        if not log_directory:
-            warnings.warn("XRuns will be logged in cwd.")
-            log_directory = os.getcwd()
-
-        self.xrun_filename = os.path.join(log_directory, 'alsa_playback_xruns.txt')
 
         self.control_pipe = control_pipe
 
@@ -212,26 +206,19 @@ class NetworkPlaybackSystem():
                 raise ValueError("Error sending 'SetGain' to Sound Server. Is server online and running?")
 
 
-    def play(self):
-        print(time.time())
-        with open(self.xrun_filename, 'w') as xrun_logfile:
-            self.running = True
-            while self.running:
-                while self.control_pipe.poll(0.1): # is this safe?
-                    msg = self.control_pipe.recv_bytes()
-                    commands = pickle.loads(msg)
-                    # if 'StopMessage' in commands:
-                    #     print('Got StopMessage in ALSA process.')
-                    #     break;
-                    try:
-                        for key, gain in commands.items():
-                            if key in self.stimuli:
-                                self.set_gain(key, gain)
-                            elif key is not None: # pass if key is None
-                                raise ValueError('Unknown stimulus {}.'.format(key))
-                    except Exception as e:
-                        print('Exception: ', commands)
-                        raise e
+    def play(self, stop_event):
+        while self.control_pipe.poll(0.1) and ~stop_event.is_set(): # is this safe?
+            msg = self.control_pipe.recv_bytes()
+            commands = pickle.loads(msg)
+            try:
+                for key, gain in commands.items():
+                    if key in self.stimuli:
+                        self.set_gain(key, gain)
+                    elif key is not None: # pass if key is None
+                        raise ValueError('Unknown stimulus {}.'.format(key))
+            except Exception as e:
+                print('Exception: ', commands)
+                raise e
 
 
         if self.running == False:
