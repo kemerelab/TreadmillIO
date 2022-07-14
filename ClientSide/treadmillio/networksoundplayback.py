@@ -135,7 +135,7 @@ class NetworkPlaybackSystem():
 
         self.sound_server_endpoint = config['DeviceList'][dev_name]['SoundServer']
 
-        self.REQUEST_RETRIES = 3
+        self.REQUEST_RETRIES = 5
         self.REQUEST_TIMEOUT = 100
         context = zmq.Context()
         self.sound_server_context = context.socket(zmq.REQ)
@@ -147,7 +147,7 @@ class NetworkPlaybackSystem():
 
         retval = self.send_zmq_command({'Command':'Configure', 
                                         'DeviceConfig': remote_device_config,
-                                        'Stimuli': self.stimuli}, b'Configured', 2)
+                                        'Stimuli': self.stimuli}, b'Configured', 5) # Raspberry pis need a lot of time
         if not retval:
             raise ValueError("Error sending 'Configure' to Sound Server. Is server online and running?")
 
@@ -157,8 +157,8 @@ class NetworkPlaybackSystem():
     def send_zmq_command(self, msg, success_reply, wait=0):
         self.sound_server_context.send(pickle.dumps(msg))
 
-        if wait > 0:
-            time.sleep(wait)
+        # if wait > 0:
+        #     time.sleep(wait)
 
         return_value = False
         retries_left = self.REQUEST_RETRIES
@@ -201,7 +201,7 @@ class NetworkPlaybackSystem():
     def set_gain(self, stimulus_key, gain):
         print('Set gain {}:{}'.format(stimulus_key, gain))
         if self.sound_server_context:
-            retval = self.send_zmq_command({'Command':'SetGain', 'Stimulus': stimulus_key, 'Gain': gain}, b'Gain Set')
+            retval = self.send_zmq_command({'Command':'SetGain', 'Stimulus': stimulus_key, 'Gain': gain}, b'Gain Set',0.1)
             if not retval:
                 raise ValueError("Error sending 'SetGain' to Sound Server. Is server online and running?")
 
