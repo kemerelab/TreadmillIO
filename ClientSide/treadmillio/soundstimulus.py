@@ -27,7 +27,7 @@ import cProfile
 import math
 
 def db2lin(db_gain):
-    return 10.0 ** (db_gain * 0.05)
+    return 10.0 ** (db_gain * 0.05) # Power DB is 20 * log10(x)
 
 def run_alsa_playback_process(device_name, config, file_dir, control_pipe, log_directory, status_queue):
     current_process().name = "python3 alsa playback"
@@ -223,7 +223,8 @@ class SoundStimulusController():
         if stimulus['Type'] == 'Background':
             new_stimulus = SoundStimulus(stimulus_name, stimulus, _playback_pipe, verbose)
             self.BackgroundSounds[stimulus_name] = new_stimulus
-            new_stimulus.change_gain(new_stimulus.baseline_gain)
+            if new_stimulus.initially_on:
+                new_stimulus.change_gain(new_stimulus.baseline_gain)
             #visualization.add_zone_position(0, VirtualTrackLength, fillcolor=stimulus['Color'], width=0.5, alpha=0.75)
         elif stimulus['Type'] == 'Beep':
             new_stimulus = BeepSound(stimulus_name, stimulus, _playback_pipe, verbose)
@@ -247,7 +248,8 @@ class SoundStimulusController():
         elif stimulus['Type'] == 'Bundle':
             new_stimulus = BundledSound(stimulus_name, stimulus, _playback_pipe, verbose)
             self.BundledSounds[stimulus_name] = new_stimulus
-            new_stimulus.change_gain(new_stimulus.baseline_gain)
+            if new_stimulus.initially_on:
+                new_stimulus.change_gain(new_stimulus.baseline_gain)
         else:
             raise ValueError('Unknown stimulus type \'{}\'.'.format(stimulus['Type']))
 
@@ -342,16 +344,18 @@ class SoundStimulus():
         else:
             warnings.warn("SoundStimulus using default 'BaselineGain' of 0.0 dB.", RuntimeWarning)
             self.baseline_gain = 0.0
+
         if 'OffGain' in stimulus_params:
             self.off_gain = stimulus_params['OffGain']
         else:
-            self.off_gain = -90.0 
-            print('Offgain -90')
+            self.off_gain = -1200.0 
+            # print('Offgain -120')
+
+        self.initially_on = stimulus_params.get('InitiallyOn', True)
 
         # Set gain prior to playing sound
         self.gain = self.off_gain # NOTE: Is it easier to have sounds off initially?
         self.playback_pipe.send_bytes(pickle.dumps({self.name: db2lin(self.gain)}))
-
         self.device = stimulus_params['Device']
         self.verbose = verbose
 

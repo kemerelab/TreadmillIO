@@ -29,7 +29,7 @@ StateMachine:
       NextState:
         LeftSound:
           ConditionType: 'ElapsedTime'
-          Duration: 30000
+          Duration: 1000
           Priority: 1
     LeftSound:
       Type: 'SetSoundState'
@@ -39,7 +39,7 @@ StateMachine:
       NextState:
         LeftSilence:
           ConditionType: 'ElapsedTime'
-          Duration: 5000
+          Duration: 1000
           Priority: 1
 
 
@@ -48,13 +48,15 @@ AuditoryStimuli:
   StimuliList:
     RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      InitiallyOn: False
       Filename: 'tone_cloud_short.wav'
       BaselineGain: -20.0
       Device: 'Speaker2' # or single device, or list of devices
     LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
-      Filename: 'tone_4kHz.wav'
-      BaselineGain: -20.0
+      InitiallyOn: False
+      Filename: 'pink_noise.wav'
+      BaselineGain: -10.0
       Device: 'Speaker1'
   DeviceList:
     Output1:
