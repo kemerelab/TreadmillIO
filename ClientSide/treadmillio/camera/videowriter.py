@@ -35,7 +35,7 @@ class VideoWriter():
         self._compressed = None
         if config['Compress']:
             self._compressed = True
-            video_filename = os.path.join(log_directory, '{}.mjeg'.format(filename_header))
+            video_filename = os.path.join(log_directory, '{}.mjpeg'.format(filename_header))
             self._writer = open(video_filename, 'wb')
             if mode == 'Mono8':
                 self.write = lambda img: self._writer.write(
