@@ -80,7 +80,6 @@ if DoLogCommands:
         now = datetime.datetime.now()
         log_root = Config['Preferences'].get('LogDirectoryRoot', '') if 'Preferences' in Config else ''
         log_directory = os.path.join(log_root, '{}{}'.format('ExperimentLog', now.strftime("%Y-%m-%d_%H%M")))
-        log_directory = '{}{}'.format('ExperimentLog', now.strftime("%Y-%m-%d_%H%M"))
     else:
         raise(ValueError('You did not specify a directory for experiment logs, and AutoLogDirectory is False.'))
 
