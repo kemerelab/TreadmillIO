@@ -1,0 +1,149 @@
+# This config file is intendend to do a simple test of sound playback.
+# If it is working, the sound should switch from the left ear to the right
+# each second, with pink noise on the right and a 3 kHz tone on the left.
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: False
+  EnableSound: True
+
+GPIO: # A list of GPIO pins used in the task
+  Poke1: {Number: 1, Type: 'INPUT', Power: True}          
+  Poke2: {Number: 2, Type: 'INPUT', Power: True}          
+  Poke3: {Number: 3, Type: 'INPUT', Power: True}          
+  Poke4: {Number: 4, Type: 'INPUT', Power: True}          
+  Poke5: {Number: 5, Type: 'INPUT', Power: True}          
+  Poke6: {Number: 6, Type: 'INPUT', Power: True}          
+  Poke7: {Number: 7, Type: 'INPUT', Power: True}          
+  Poke8: {Number: 8, Type: 'INPUT', Power: True}     
+
+  Reward1: {Number: 1, Type: 'Output', Mirror: True}
+  Reward2: {Number: 1, Type: 'Output', Mirror: True}
+  Reward3: {Number: 1, Type: 'Output', Mirror: True}
+
+  TrialTrigger: {Number: 1, Type: 'INPUT', Power: True}
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+
+    LandmarkSoundsOff:
+      Type: 'SetSoundState'
+      Params: {A1_Shift0: 'Off', B1_Shift0: 'Off', C1_Shift0: 'Off', D_Shift0: 'Off', 
+               A2_Shift0: 'Off', B2_Shift0: 'Off', C2_Shift0: 'Off', E_Shift0: 'Off', 
+               A1_Shift1: 'Off', B1_Shift1: 'Off', C1_Shift1: 'Off', D_Shift1: 'Off', 
+               A2_Shift1: 'Off', B2_Shift1: 'Off', C2_Shift1: 'Off', E_Shift1: 'Off', 
+               A1_Shift2: 'Off', B1_Shift2: 'Off', C1_Shift2: 'Off', D_Shift2: 'Off', 
+               A2_Shift2: 'Off', B2_Shift2: 'Off', C2_Shift2: 'Off', E_Shift2: 'Off',
+               Background: 'On'}
+      NextState:
+        LeftSound:
+          ConditionType: 'ElapsedTime'
+          Duration: 30000
+          Priority: 1
+    RandomTransitionState:
+      Type: 'Base' # This is a state that does nothing
+      NextState:
+        Shift0SoundOn:
+          ConditionType: 'Random'
+          RandomPriority: 100.0 # multipled by rand() to give priority (higher wins)
+        Shift1SoundOn:
+          ConditionType: 'Random'
+          RandomPriority: 1.0
+        Shift2SoundOn:
+          ConditionType: 'Random'
+          RandomPriority: 1.0    
+
+    Shift0SoundOn:
+      Type: 'SetSoundState'
+      PrintEntry: True # This will make sure that entry to the state is logged
+      Params: {A_Shift0: 'On', B1_Shift0: 'On', C_Shift0: 'On', B2_Shift0: 'On', 
+               A_Shift1: 'Off', B1_Shift1: 'Off', C_Shift1: 'Off', B2_Shift1: 'Off', 
+               A_Shift2: 'Off', B1_Shift2: 'Off', C_Shift2: 'Off', B2_Shift2: 'Off'}
+      NextState: 'BaitRewardShift0'
+
+    BaitRewardShift0: {Type: 'SetGPIO', Params: {Pin: 'Reward1', Value: 1}, 
+                       NextState: {Reward1-Waiting: {ConditionType: 'ElapsedTime', Duration: 100}}} 
+                       # pump needs 100 ms to recognize logic level change
+    Reward1-Waiting: {Type: 'SetGPIO', Params: {Pin: 'Reward1', Value: 0},
+                      NextState: {LandmarkSoundsOff: {ConditionType: 'GPIO', Pin: 1, Value: True}}}
+                       # TODO: Fix pin !!!!!!!!
+
+    Shift1SoundOn:
+      Type: 'SetSoundState'
+      PrintEntry: True # This will make sure that entry to the state is logged
+      Params: {A_Shift0: 'Off', B1_Shift0: 'Off', C_Shift0: 'Off', B2_Shift0: 'On', 
+               A_Shift1: 'On', B1_Shift1: 'On', C_Shift1: 'On', B2_Shift1: 'Off', 
+               A_Shift2: 'Off', B1_Shift2: 'Off', C_Shift2: 'Off', B2_Shift2: 'Off'}
+      NextState: 'BaitRewardShift1'
+
+    BaitRewardShift1: {Type: 'SetGPIO', Params: {Pin: 'Reward2', Value: 1}, 
+                       NextState: {Reward2-Waiting: {ConditionType: 'ElapsedTime', Duration: 100}}} 
+                       # pump needs 100 ms to recognize logic level change
+    Reward2-Waiting: {Type: 'SetGPIO', Params: {Pin: 'Reward2', Value: 0},
+                      NextState: {LandmarkSoundsOff: {ConditionType: 'GPIO', Pin: 2, Value: True}}}
+                       # TODO: Fix pin !!!!!!!!
+
+
+    Shift2SoundOn:
+      Type: 'SetSoundState'
+      PrintEntry: True # This will make sure that entry to the state is logged
+      Params: {A_Shift0: 'Off', B1_Shift0: 'Off', C_Shift0: 'Off', B2_Shift0: 'Off', 
+               A_Shift1: 'Off', B1_Shift1: 'Off', C_Shift1: 'Off', B2_Shift1: 'Off', 
+               A_Shift2: 'On', B1_Shift2: 'On', C_Shift2: 'On', B2_Shift2: 'On'}
+
+      NextState: 'BaitRewardShift2'
+
+    BaitRewardShift2: {Type: 'SetGPIO', Params: {Pin: 'Reward3', Value: 1}, 
+                       NextState: {Reward3-Waiting: {ConditionType: 'ElapsedTime', Duration: 100}}} 
+                       # pump needs 100 ms to recognize logic level change
+    Reward3-Waiting: {Type: 'SetGPIO', Params: {Pin: 'Reward3', Value: 0},
+                      NextState: {LandmarkSoundsOff: {ConditionType: 'GPIO', Pin: 3, Value: True}}}
+                       # TODO: Fix pin !!!!!!!!
+
+
+AuditoryStimuli:
+  DeviceList:
+    RP1: {Type: 'NetworkOutput', SoundServer: 'tcp://raspberrypi-1.local:7342', 
+          RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0', NChannels: 2, BufferSize: 4096,
+          ChannelLabels: {RP1_1: 0, RP1_2: 1}}
+    RP2: {Type: 'NetworkOutput', SoundServer: 'tcp://raspberrypi-2.local:7342', 
+          RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0', NChannels: 2, BufferSize: 4096,
+          ChannelLabels: {RP2_1: 0, RP2_2: 1}}
+    RP3: {Type: 'NetworkOutput', SoundServer: 'tcp://raspberrypi-3.local:7342', 
+          RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0', NChannels: 2, BufferSize: 4096,
+          ChannelLabels: {RP3_1: 0, RP3_2: 1}}
+    RP4: {Type: 'NetworkOutput', SoundServer: 'tcp://raspberrypi-4.local:7342', 
+          RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0', NChannels: 2, BufferSize: 4096,
+          ChannelLabels: {RP4_1: 0, RP4_2: 1}}
+    RP5: {Type: 'NetworkOutput', SoundServer: 'tcp://raspberrypi-5.local:7342', 
+          RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0', NChannels: 2, BufferSize: 4096,
+          ChannelLabels: {RP5_1: 0}}
+
+
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/96kHz'
+  Defaults:
+    Type: 'Background'
+
+  StimuliList:
+    Background: {Filename: 'tone_cloud_short.wav', BaselineGain: -30.0, Device: 'RP5_1'}
+
+    A_Shift0: {Filename: 'lsFM_CK_96k_4.24k_8_0.1667.wav', BaselineGain: -20.0, Device: 'RP2_1' }
+    B1_Shift0: {Filename: 'lsFM_CK_96k_8.485k_8_5.wav', BaselineGain: -20.0, Device: 'RP3_1' }
+    C_Shift0: {Filename: 'SAM_CK_96k_12k_8.wav', BaselineGain: -20.0, Device: 'RP4_1' }
+    B2_Shift0: {Filename: 'lsFM_CK_96k_8.485k_8_5.wav', BaselineGain: -20.0, Device: 'RP1_1' }
+   
+    A_Shift1: {Filename: 'lsFM_CK_96k_4.24k_8_0.1667.wav', BaselineGain: -20.0, Device: 'RP1_2' } # minus one shift
+    B1_Shift1: {Filename: 'lsFM_CK_96k_8.485k_8_5.wav', BaselineGain: -20.0, Device: 'RP2_2' }
+    C_Shift1: {Filename: 'SAM_CK_96k_12k_8.wav', BaselineGain: -20.0, Device: 'RP3_2' }
+    B2_Shift1: {Filename: 'lsFM_CK_96k_8.485k_8_5.wav', BaselineGain: -20.0, Device: 'RP4_2' }
+
+    A_Shift2: {Filename: 'lsFM_CK_96k_4.24k_8_0.1667.wav', BaselineGain: -20.0, Device: 'RP1_1' } # minus two shift
+    B1_Shift2: {Filename: 'lsFM_CK_96k_8.485k_8_5.wav', BaselineGain: -20.0, Device: 'RP2_1' }
+    C_Shift2: {Filename: 'SAM_CK_96k_12k_8.wav', BaselineGain: -20.0, Device: 'RP2_1' }
+    B2_Shift2: {Filename: 'lsFM_CK_96k_8.485k_8_5.wav', BaselineGain: -20.0, Device: 'RP4_1' }
+
+

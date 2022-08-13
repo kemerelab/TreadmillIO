@@ -1,0 +1,96 @@
+# This config file is intendend to do a simple test of sound playback using the network interface.
+# You first need to run treadmillio_sound_server either on localhost (default) or on a remote
+# (in which case the SoundServer field must be updated).
+
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: False
+  EnableSound: True
+
+GPIO: # A list of GPIO pins used in the task
+  Reward1:
+    Number: 1
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    LeftSilence:
+      Type: 'SetSoundState'
+      Params:
+        Sound1: 'On'
+        Sound2: 'Off'
+        Sound3: 'On'
+        Sound4: 'Off'
+      NextState:
+        LeftSound:
+          ConditionType: 'ElapsedTime'
+          Duration: 30000
+          Priority: 1
+    LeftSound:
+      Type: 'SetSoundState'
+      Params:
+        Sound1: 'Off'
+        Sound2: 'On'
+        Sound3: 'Off'
+        Sound4: 'On'
+      NextState:
+        LeftSilence:
+          ConditionType: 'ElapsedTime'
+          Duration: 5000
+          Priority: 1
+
+
+AuditoryStimuli:
+  AudioFileDirectory: '/home/ckemere/Code/TreadmillIO/ClientSide/Sounds/192kHz'
+  StimuliList:
+    Sound1: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_cloud_short.wav'
+      BaselineGain: -30.0
+      Device: 'Speaker1' # or single device, or list of devices
+    Sound2: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_4kHz.wav'
+      BaselineGain: -30.0
+      Device: 'Speaker2'
+    Sound3: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_cloud_short.wav'
+      BaselineGain: -30.0
+      Device: 'Speaker3' # or single device, or list of devices
+    Sound4: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_4kHz.wav'
+      BaselineGain: -30.0
+      Device: 'Speaker4'
+  DeviceList:
+    Output1:
+      Type: 'NetworkOutput' # Input or Output
+      # SoundServer: 'tcp://localhost:7342' # 'tcp://192.168.1.139:7342'
+      SoundServer: 'tcp://raspberrypi-2:7342' # 'tcp://192.168.1.139:7342'
+      # RemoteHWDevice: 'pulse' # 'hw:CARD=sndrpihifiberry,DEV=0'
+      RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0'
+      NChannels: 2
+      BufferSize: 4096
+      ChannelLabels:
+        Speaker1: 0
+        Speaker2: 1
+    Output2:
+      Type: 'NetworkOutput' # Input or Output
+      # SoundServer: 'tcp://localhost:7342' # 'tcp://192.168.1.139:7342'
+      SoundServer: 'tcp://raspberrypi-3:7342' # 'tcp://192.168.1.139:7342'
+      # RemoteHWDevice: 'pulse' # 'hw:CARD=sndrpihifiberry,DEV=0'
+      RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0'
+      NChannels: 2
+      BufferSize: 4096
+      ChannelLabels:
+        Speaker3: 1
+        Speaker4: 0
+
