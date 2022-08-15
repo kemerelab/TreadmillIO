@@ -1,0 +1,160 @@
+# This config file is intendend to do a simple test of sound playback.
+# If it is working, the sound should switch from the left ear to the right
+# each second, with pink noise on the right and a 3 kHz tone on the left.
+
+Preferences:
+  HeartBeat: 1000 # The interval at which a heart-beat info message is printed to screen (in ms) 
+  RandomSeed: 345
+  LogCommands: False
+  EnableSound: True
+
+GPIO: # A list of GPIO pins used in the task
+  Reward1:
+    Number: 1
+    Type: 'Output'
+    Mirror: True # The 'Mirror' option is for 'Output' type GPIOs. It configures whether the associated Aux-GPIO pin is raised/lowered 
+                 # whenver the GPIO itself is. The Aux-GPIO is connected to an LED, which allows for visualization of the GPIO state.
+
+Maze:
+  Type: 'StateMachine' # VR or physical
+
+StateMachine:
+  States:
+    LeftSilence:
+      Type: 'SetSoundState'
+      Params:
+        Sound1: 'On'
+        Sound3: 'On'
+        Sound5: 'On'
+        Sound7: 'On'
+        Sound9: 'On'
+        Sound2: 'Off'
+        Sound4: 'Off'
+        Sound6: 'Off'
+        Sound8: 'Off'
+        Sound10: 'Off'
+      NextState:
+        LeftSound:
+          ConditionType: 'ElapsedTime'
+          Duration: 30000
+          Priority: 1
+    LeftSound:
+      Type: 'SetSoundState'
+      Params:
+        Sound1: 'Off'
+        Sound3: 'Off'
+        Sound5: 'Off'
+        Sound7: 'Off'
+        Sound9: 'Off'
+        Sound2: 'On'
+        Sound4: 'On'
+        Sound6: 'On'
+        Sound8: 'On'
+        Sound10: 'On'
+      NextState:
+        LeftSilence:
+          ConditionType: 'ElapsedTime'
+          Duration: 5000
+          Priority: 1
+
+
+AuditoryStimuli:
+  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/96kHz'
+  StimuliList:
+    Sound1: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'lsFM_96k_12k_8_0.1667_10s.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker1' # or single device, or list of devices
+    Sound2: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_4kHz.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker2'
+    Sound3: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'SAM_96k_12k_2_10s.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker3' # or single device, or list of devices
+    Sound4: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_4kHz.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker4'
+    Sound5: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_5kHz.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker5' # or single device, or list of devices
+    Sound6: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_7kHz.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker6'
+    Sound7: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_cloud_short.wav'
+      BaselineGain: -30.0
+      Device: 'Speaker7' # or single device, or list of devices
+    Sound8: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_cloud_short.wav'
+      BaselineGain: -30.0
+      Device: 'Speaker8'
+    Sound9: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_9kHz.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker9' # or single device, or list of devices
+    Sound10: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
+      Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
+      Filename: 'tone_11kHz.wav'
+      BaselineGain: -20.0
+      Device: 'Speaker10'
+  DeviceList:
+    Output1:
+      Type: 'NetworkOutput' # Input or Output
+      SoundServer: 'tcp://raspberrypi-1.local:7342' # 'tcp://192.168.1.139:7342'
+      RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0' # 'pulse'  
+      NChannels: 2
+      BufferSize: 4096
+      ChannelLabels:
+        Speaker1: 0
+        Speaker2: 1
+    Output2:
+      Type: 'NetworkOutput' # Input or Output
+      SoundServer: 'tcp://raspberrypi-2.local:7342' # 'tcp://192.168.1.139:7342'
+      RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0' # 'pulse'  
+      NChannels: 2
+      BufferSize: 4096
+      ChannelLabels:
+        Speaker3: 0
+        Speaker4: 1
+    Output3:
+      Type: 'NetworkOutput' # Input or Output
+      SoundServer: 'tcp://raspberrypi-3.local:7342' # 'tcp://192.168.1.139:7342'
+      RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0' # 'pulse'  
+      NChannels: 2
+      BufferSize: 4096
+      ChannelLabels:
+        Speaker5: 0
+        Speaker6: 1
+    Output4:
+      Type: 'NetworkOutput' # Input or Output
+      SoundServer: 'tcp://raspberrypi-4.local:7342' # 'tcp://192.168.1.139:7342'
+      RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0' # 'pulse'  
+      NChannels: 2
+      BufferSize: 4096
+      ChannelLabels:
+        Speaker7: 0
+        Speaker8: 1
+    Output5:
+      Type: 'NetworkOutput' # Input or Output
+      SoundServer: 'tcp://raspberrypi-5.local:7342' # 'tcp://192.168.1.139:7342'
+      RemoteHWDevice: 'hw:CARD=sndrpihifiberry,DEV=0' # 'pulse'  
+      NChannels: 2
+      BufferSize: 4096
+      ChannelLabels:
+        Speaker9: 0
+        Speaker10: 1
+
