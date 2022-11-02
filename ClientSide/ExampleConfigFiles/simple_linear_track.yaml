@@ -44,7 +44,7 @@ StateMachine:
       Params:
           Pin: 'Reward1'
           Value: 0
-      NextState: 'InitializePump1'
+      NextState: 'InitializePump2'
     InitializePump2:
       Type: 'SetGPIO'
       Params:
