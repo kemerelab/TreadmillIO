@@ -1,6 +1,6 @@
 import time
 from typing import Tuple, Union
-import numpy
+import numpy as np
 
 def inside(zone: Tuple[int,int], pos: int) -> bool:
     if (zone[1] > zone[0]): # take into account the fact that the track is circular
@@ -104,6 +104,9 @@ class OperantRewardZone(ClassicalRewardZone):
         else:
             self.lick_pin = gpio_interface.GPIOs[params['LickPin']]['Number'] # We are going to bit mask raw GPIO for this
 
+        self.lick_history = np.zeros(params.get('DebounceLength', 1)) # lick_history is a vector of zeros. we'll fill it with lick data as a circular buffer
+        self.lick_history_idx = 0
+
         self.awaiting_zone_entry = True
         self.random_assist = None
         if ('RandomAssist' in params):
@@ -111,16 +114,21 @@ class OperantRewardZone(ClassicalRewardZone):
                 raise ValueError('RandomAssist Parameter of Operant Reward zone must be between 0.0 and 1.0!')
             self.random_assist = params['RandomAssist']
 
-
         self.Type = 'Operant'
 
     def update(self, time, pos, gpio, logger=None):
+        # debounce licks
+        mouse_licked = ((gpio & (0x01 << (self.lick_pin-1))) > 0)
+        self.lick_history[self.lick_history_idx] = mouse_licked
+        self.lick_history_idx = (self.lick_history_idx + 1) % len(self.lick_history)
+        mouse_licked_debounced = np.prod(self.lick_history) # will only be true if all ones!
+
         if inside(self.active_zone, pos):
             do_random_reward = False
 
             if self.awaiting_zone_entry:
                 if self.random_assist:
-                    r = numpy.random.rand()
+                    r = np.random.rand()
                     if (r < self.random_assist):
                         do_random_reward = True # Deliver reward classically this tick!
                 logger(['Entered', time, pos, gpio, do_random_reward]) # Log the reward event if logging
@@ -128,8 +136,8 @@ class OperantRewardZone(ClassicalRewardZone):
 
             if time > (self.last_reward_time + self.refractory_period ):
                 if self.active: 
-                    mouse_licked = ((gpio & (0x01 << (self.lick_pin-1))) > 0)
-                    if mouse_licked or (do_random_reward):
+                    # mouse_licked = ((gpio & (0x01 << (self.lick_pin-1))) > 0)
+                    if mouse_licked_debounced or (do_random_reward):
                         self.last_reward_time = time # For refractory period
                         self.current_reward_number += 1 # For maximum number of rewards
                         if (self.current_reward_number >= self.max_rewards):
