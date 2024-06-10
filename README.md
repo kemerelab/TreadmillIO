@@ -1,5 +1,5 @@
 
-![TreadmillIO IO Module](http://github.com/kemerelab/TreadmillIO/blob/master/treadmillio-interface-pcb.jpg)
+![TreadmillIO IO Module](https://github.com/kemerelab/TreadmillIO/blob/master/treadmillio-interface-pcb.jpg)
 
 # TreadmillIO
 
@@ -18,7 +18,7 @@ relies on ALSA, which is Linux only, and the UVC WebCam capture interface has
 only been tested on Linux. However, the project should otherwise work across
 platforms. Pull requests for Windows or MAC compiling are welcome.
 
-See the [installation instructions for the software framework](ClientSide/Documentation/INSTALL.md) to get up
+See the [installation instructions for the software framework](Software/Documentation/INSTALL.md) to get up
 and running.
 
-Some example [configuration files](ClientSide/ExampleConfigFiles/) are available.
+Some example [configuration files](Software/ExampleConfigFiles/) are available.
