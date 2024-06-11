@@ -29,6 +29,9 @@ and running.
 
 Some example [configuration files](Software/ExampleConfigFiles/) are available.
 
+An example experimental setup using PschoPy-based stimuli is in the 
+[simple-pyschopy-visual-task](https://github.com/kemerelab/simple-psychopy-visual-task)
+project.
 
 <!-- 
 ## Auditory VR Tasks
