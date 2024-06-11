@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-
-#%%
-# NOTE: v2.1.1. 3 different Tones (3kHz, 6kHz, 12kHz) are played based on animal's position on the virtual track. 
-#       ramping volume depend on a parameter named "peak_volume" describing how steep the ramping function
-#       should be (default 13). Taking care the max peakVolume or OnVolume should not exceed -90dB and 90dB.
-# Features: 
-#     sound logic that is controlled only by linear_pos
-#     pump logic controlled by PumpOn and PumpOffTime, so each time the pump is triggered, it must reset after 100ms regardless of animal's pos
-#     peak_volume is constant number regardless of different tone frequencies
-#     max_reward_times controls the max number of reward it can get within one single lap
-#
-#  See SoundStimulus.py - need to run `jackd -R -P50 -v -d alsa -p64 -n2 -P hw:1,0 -r48000` (use aplay -l/-L to figure out which hw device)
-#
-
 import time
 import datetime
 import os
@@ -27,19 +13,18 @@ import warnings
 from contextlib import ExitStack
 
 
-NamedVersion = '1.2'
+NamedVersion = '1.3'
 Profiling = False
-
 
 ### Maybe should add argcomplete for this program?
 
 # Command-line arguments: computer settings
-# Command-line arguments: computer settings
+
 parser = argparse.ArgumentParser(description='Run simple linear track experiment.')
+parser.add_argument('param-file', # Make the param file a required argument.  
+                    help='YAML file containing task parameters. Use an empty yaml file for defaults.')
 parser.add_argument('-P', '--serial-port', default='/dev/ttyACM0',
                    help='TTY device for USB-serial interface (e.g., /dev/ttyUSB0 or COM10)')
-parser.add_argument('-C','--param-file', default='defaults.yaml',  
-                    help='YAML file containing task parameters')
 parser.add_argument('-R','--random-seed', default=None,  
                     help='Random seed. If specified, this also overrides the YAML configuration file.')
 parser.add_argument('--output-dir', default=None,
@@ -50,9 +35,6 @@ parser.add_argument('--no-check-space', default=None,
 
 args = parser.parse_args()
 print(args)
-
-if args.param_file == 'defaults.yaml':
-    warnings.warn('Using default configuration file. That is almost certainly not what you want to do!')
 
 # YAML parameters: task settings
 with open(args.param_file, 'r') as f:
