@@ -22,3 +22,7 @@ See the [installation instructions for the software framework](Software/Document
 and running.
 
 Some example [configuration files](Software/ExampleConfigFiles/) are available.
+
+### Extras
+Some sample sound stimuli can be found in the [simple-sound-stimuli](https://github.com/kemerelab/simple-sound-stimuli)
+repository.
