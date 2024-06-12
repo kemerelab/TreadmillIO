@@ -1,5 +1,6 @@
 [project]
 name = "TreadmillIO"
+requires-python = ">=3.8.1,<4.0"
 authors = [{ name = "Caleb Kemere", email = "caleb.kemere@rice.edu" }]
 description = "Simple experimental control software in python"
 dynamic=["version"]
@@ -30,7 +31,6 @@ classifiers = ['Programming Language :: Python :: 3', 'Operating System :: OS In
 # ]
 
 
-requires-python = ">=3.8.1,<4.0"
 
 dependencies = [
     "pyserial",
