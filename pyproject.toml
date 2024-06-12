@@ -62,16 +62,12 @@ Repository = "https://github.com/kemerelab/TreadmillIO"
 [project.scripts]
 run-treadmillio = "treadmillio.tools.run_treadmillio:main"
 
+[tool.setuptools]
+package-dir = {"" = "treadmillio"}
+
 [build-system]
 requires = [ "setuptools>=41", "setuptools-git-versioning>=2.0,<3", ]
 build-backend = "setuptools.build_meta"
-
-
-# [tool.setuptools.package-data]
-# treadmillio = ["VERSION"]
-
-# [tool.setuptools]
-# zip-safe = false
 
 [tool.setuptools-git-versioning]
 enabled = true
