@@ -72,5 +72,5 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools-git-versioning]
 enabled = true
-template= "{tag}.{sha}"
-dev_template = "{tag}.{sha}"
+template= "{tag}.git+{sha}"
+dev_template = "{tag}.git+{sha}"
