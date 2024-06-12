@@ -66,7 +66,7 @@ run-treadmillio = "treadmillio.tools.run_treadmillio:main"
 package-dir = {"" = "treadmillio"}
 
 [build-system]
-requires = [ "setuptools>=41", "setuptools-git-versioning>=2.0,<3", ]
+requires = [ "setuptools>=41,<66", "setuptools-git-versioning>=2.0,<3", ]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools-git-versioning]
