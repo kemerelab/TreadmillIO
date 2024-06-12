@@ -37,15 +37,25 @@ class SerialInterface():
                 self.add_gpio(gpio_label, gpio_config)
 
         self.calculate_position = False
+
+        # Wheel encoder variables. Initialize to zero (will keep no-maze-config condition)
+
+        self.reinitialize = True
+        self.unwrapped_encoder = 0
+        self.initial_encoder = 0
+        self.pos = 0
+        self.unwrapped_pos = 0        
+        self.velocity = 0
+
         if maze_config is not None:
             self.calculate_position = True
-            self.reinitialize = True
+            # self.reinitialize = True
             self.block_movement = False
 
-            self.unwrapped_encoder = 0
-            self.initial_encoder = 0
-            self.pos = 0
-            self.unwrapped_pos = 0
+            # self.unwrapped_encoder = 0
+            # self.initial_encoder = 0
+            # self.pos = 0
+            # self.unwrapped_pos = 0
 
             self.virtual_track_length = maze_config.get('Length', 1000.0) #cm
             self.d = maze_config.get('WheelDiameter', 20.2) #cm
@@ -162,8 +172,8 @@ class SerialInterface():
                 self.latency = self.latency + 1
                 #print(f'Difference between expected and actual GPIO {self.GPIO_state:#0b} {GPIO:#0b}')
 
-        if self.calculate_position or (not self.reinitialize):
-            if not self.reinitialize:
+        if not self.reinitialize:
+            if self.calculate_position:
                 diff_encoder = new_unwrapped_encoder - self.unwrapped_encoder # instantaneous velocity in angle (encoder units)
                 if not self.block_movement:
                     change_in_position = diff_encoder * self.diameter_constant # convert velocity to cm per time step
@@ -179,16 +189,10 @@ class SerialInterface():
 
                 self.unwrapped_encoder = new_unwrapped_encoder # update this either way to keep track
 
-            else:
-                self.unwrapped_pos = 0
-                self.pos = 0
-                self.unwrapped_encoder = new_unwrapped_encoder
-                self.reinitialize = False
-                self.velocity = 0
-                
         else:
             self.unwrapped_encoder = new_unwrapped_encoder
-
+            self.reinitialize = False
+                
         if self.data_socket:
             self.data_socket.send(struct.pack('<Ld', self.MasterTime, self.pos))
 
