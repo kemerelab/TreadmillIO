@@ -39,6 +39,7 @@ dependencies = [
     "numpy",
     "gitpython",
     "cython",
+    "setuptools-git-versioning"
 ]
 
 # [project.optional-dependencies]
@@ -71,4 +72,5 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools-git-versioning]
 enabled = true
-dev_template = "{tag}+{sha}"
+template= "{tag}.{sha}"
+dev_template = "{tag}.{sha}"
