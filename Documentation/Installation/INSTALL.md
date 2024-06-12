@@ -1,26 +1,22 @@
 # Installation
 
-### Required Dependencies
-This has been tested from a clean installation of Ubuntu 20.04. The following
-packages should be installed via `apt`:
+### !!Update!! TreadmillIO should now be compatible with pip
+Start with a clean Python environment. For example:
+```
+mamba create -n treadmillio python=3.10
+conda activate treadmillio
+```
 
-`sudo apt install python3-pip python3-numpy python3-matplotlib python3-scipy python3-pygraphviz`
+Install using `pip` from Github:
+```
+pip install git+https://github.com/kemerelab/TreadmillIO/
+```
 
-`sudo apt install git`
-
-`pip3 install setproctitle`
-
-#### Clone the `TreadmillIO` repository
-
-`git clone https://github.com/kemerelab/TreadmillIO`
-
-Install further dependencies:
-`pip3 install pyyaml zmq pyserial soundfile gitpython` (for main code)
-
-#### Install the required files for the Teensy interface:
+### Install the required files for the Teensy hardware interface:
 Optionally download the Arduino package and the Teensy installation files from
 [https://www.pjrc.com/teensy/td_download.html].
 
+#### For Linux:
 Install the udev rules copied from this website in
 [Documentation/00-teensy.rules] to `/etc/udev/rules.d`.
 
@@ -41,12 +37,15 @@ your computer or running:
 You'll probably need to unplug and replug the devices after that for them to
 be picked up.
 
-#### Test
-You should now be able to plug in the IO board and run `./RunExperiment.py` with
+### Test
+You should now be able to plug in the IO board and run `run-treadmillio` with
 an appropriate configuration file.  For example: 
 `./RunExperiment.py -C ExampleConfigs/tests/test_io_pins.yaml`. (This should 
 activate all the IO pins on your interface board.)
 
+```
+run-treadmillio -P /dev/tty.usbmodem86825701 /path/to/TreadmillIO/Documentation/ExampleConfigs/tests/test_io_pins.yaml
+```
 
 ## Optional sound interface using the Alsa library
 #### Clone the `ckemere` version of `pyalsaaudio` and install it

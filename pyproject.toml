@@ -39,8 +39,11 @@ dependencies = [
     "numpy",
     "gitpython",
     "cython",
-    "setuptools-git-versioning"
+    "setuptools-git-versioning",
+    "setproctitle"
 ]
+# matplotlib scipy pygraphviz!
+# soundfile!
 
 # [project.optional-dependencies]
 # markdown = [""] # add pygraphviz here?
