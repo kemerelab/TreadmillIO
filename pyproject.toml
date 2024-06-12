@@ -59,12 +59,12 @@ Repository = "https://github.com/kemerelab/TreadmillIO"
 # changelog-header = "###############"
 # version-header = "="
 
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [project.scripts]
 run-treadmillio = "treadmillio.tools.run_treadmillio:main"
 
-[tool.setuptools]
-package-dir = {"" = "treadmillio"}
 
 [build-system]
 requires = [ "setuptools>=41,<66", "setuptools-git-versioning>=2.0,<3", ]
