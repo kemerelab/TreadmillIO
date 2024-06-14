@@ -20,52 +20,53 @@ Maze:
 
 StateMachine:
   States:
-    LeftSilence:
+    LeftSound:
       Type: 'SetSoundState'
       Params:
         RightEarSound: 'Off'
         LeftEarSound: 'On'
       NextState:
-        LeftSound:
+        RightSound:
           ConditionType: 'ElapsedTime'
           Duration: 1000
           Priority: 1
-    LeftSound:
+    RightSound:
       Type: 'SetSoundState'
       Params:
         RightEarSound: 'On'
         LeftEarSound: 'Off'
       NextState:
-        LeftSilence:
+        LeftSound:
           ConditionType: 'ElapsedTime'
           Duration: 1000
           Priority: 1
 
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
+  AudioFileDirectory: '/media/psf/Documents/Code-Shared/simple-sound-stimuli/Sounds/48kHz'
   StimuliList:
     RightEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
-      Filename: 'pink_noise.wav'
+      Filename: 'tone_4kHz.wav'
       BaselineGain: 0.0
       Device: 'Speaker1' # or single device, or list of devices
     LeftEarSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
       Type: 'Background' # Stimuli type - 'Localized', 'Background', or 'Beep'
-      Filename: 'tone_4kHz.wav'
+      Filename: 'tone_cloud_short.wav'
       BaselineGain: 0.0
       Device: 'Speaker2'
   DeviceList:
     Output1:
       Type: 'Output' # Input or Output
-      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      HWDevice: 'hw:CARD=Intel,DEV=0'
+      BufferSize: 512
       NChannels: 2
       ChannelLabels:
         Speaker1: 0
         Speaker2: 1
     Microphone1:
       Type: 'Input'
-      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      HWDevice: 'hw:CARD=Intel,DEV=0'
       NChannels: 2
       SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
       BufferSize: 1024 

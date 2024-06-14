@@ -40,13 +40,14 @@ dependencies = [
     "gitpython",
     "cython",
     "setuptools-git-versioning",
-    "setproctitle"
+    "setproctitle",
+    "scipy",
+    "soundfile"
 ]
-# matplotlib scipy pygraphviz!
-# soundfile!
+# matplotlib  pygraphviz!
 
-# [project.optional-dependencies]
-# markdown = [""] # add pygraphviz here?
+[project.optional-dependencies]
+sound = ["pyalsaaudio>=0.11"]
 
 [project.urls]
 Homepage = "https://github.com/kemerelab/TreadmillIO"

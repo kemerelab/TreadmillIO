@@ -1,5 +1,11 @@
+# This example config controls a VR environment in which reward is automatically
+# dispensed when the animal passes through a "Reward Zone". 
+# The VR includes 3 different location specific sound sources as well as a
+# background sound. Note that this configuration file uses the "RewardZones" configuration 
+# option as opposed to a state machine (see, e.g., vr_teleport_classical_example.yaml).
+
 Info: # "Info" configuration options can be overridden by command line options
-  MouseID: V1A1 # Used to name saved data file
+  MouseID: Mouse # Used to name saved data file
   Note: '' # Added in a block at the start of saved data file
   Session: '' # This is added to default (date and time)
   TaskType: Auditory VR Example
@@ -9,6 +15,8 @@ Preferences:
   RandomSeed: 345
   LogCommands: True
   EnableSound: True
+  DataStreamingPort: 8556 # This port is used to send position data to PyRendermaze or other VR components
+
 
 GPIO: # A list of GPIO pins used in the task
   Lick: # This is an arbitrary label used later to configure Reward
@@ -32,7 +40,7 @@ Maze:
 
 
 AuditoryStimuli:
-  AudioFileDirectory: '/home/kemerelab/Code/TreadmillIO/ClientSide/Sounds/192kHz'
+  AudioFileDirectory: '/path/to/simple-sound-stimuli/Sounds/48kHz'
 
   StimuliList:
     BackgroundSound: # This label is abitrary. In the case of "Beep" stimuli, it is used to configure Reward
@@ -67,18 +75,11 @@ AuditoryStimuli:
   DeviceList:
     Output1:
       Type: 'Output' # Input or Output
-      HWDevice: 'hw:CARD=SoundCard,DEV=0'
+      HWDevice: 'hw:CARD=SoundCard,DEV=0' # Update this for your HW
       NChannels: 2
       ChannelLabels:
         Speaker1: 1
-    Microphone1:
-      Type: 'Input'
-      HWDevice: 'hw:CARD=SoundCard,DEV=0'
-      NChannels: 2
-      SamplingRate: 48000 # I'd like to autodetect from playback, but this would require communication between processes
-      BufferSize: 1024 
-      Record: True
-      FilenameHeader: ''
+
 
 
 

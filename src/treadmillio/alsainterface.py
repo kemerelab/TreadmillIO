@@ -16,6 +16,7 @@ import time
 import pickle
 import soundfile
 import warnings
+import errno
 import signal
 
 #from profilehooks import profile
@@ -242,10 +243,12 @@ class ALSAPlaybackSystem():
                 for _, stim in self.stimuli.items():
                     stim.get_nextbuf()
                 self.out_buf[:] = self.data_buf.sum(axis=2).astype(dtype=self.out_buf.dtype, order='C')
-                res, xruns = self.adevice.write(self.out_buf)
-                if xruns != 0:
-                    print('xrun in playback [{}] at {}'.format(xruns, time.monotonic()))
-                    print('xrun in playback [{}] at {}'.format(xruns, time.monotonic()), file=xrun_logfile)
+                res = self.adevice.write(self.out_buf)
+
+                while (res == errno.EPIPE) :
+                    print('xrun in playback at {}'.format(time.monotonic()))
+                    print('xrun in playback at {}'.format(time.monotonic()), file=xrun_logfile)
+                    res = self.adevice.write(self.out_buf)
 
                 while self.control_pipe.poll(): # is this safe? too many messages will certainly cause xruns!
                     msg = self.control_pipe.recv_bytes()    # Read from the output pipe and do nothing
@@ -293,6 +296,7 @@ class ALSARecordSystem():
         if dtype == 'int16':
             self.adevice.setformat(alsaaudio.PCM_FORMAT_S16_LE)
             scale_factor = scale_factor*2
+            self.dtype = np.int16
         # elif dtype == 'int32':
         #     scale_factor = scale_factor*4
         #     self.adevice.setformat(alsaaudio.PCM_FORMAT_S32_LE)
@@ -301,10 +305,8 @@ class ALSARecordSystem():
 
         self.adevice.setperiodsize(self.buffer_size)
 
-
-        self.in_buf = np.zeros((self.buffer_size*scale_factor, self.channels), dtype=dtype, order='C')
-
-        self.adevice.enable_timestamps()
+        self.adevice.set_tstamp_mode(alsaaudio.PCM_TSTAMP_ENABLE)
+        self.adevice.set_tstamp_type(alsaaudio.PCM_TSTAMP_TYPE_MONOTONIC)
 
         self.logfilename = os.path.join(log_directory, '{}.wav.log'.format(dev_name))
         self.soundfilename = os.path.join(log_directory, '{}.wav'.format(dev_name))
@@ -333,9 +335,11 @@ class ALSARecordSystem():
 
             print('Timestamps for soundfile frames. Each record is [nsamps, time], where time is CLOCK_MONOTONIC.\n', file=self.logfile)
             while True:
-                nsamp = self.adevice.read_into(self.in_buf)
-                t = self.adevice.gettimestamp()
-                self.soundfile.write(self.in_buf[:nsamp,:])
+                nsamp, indata = self.adevice.read()
+                tsec, ns, avail = self.adevice.htimestamp()
+                t = ns + tsec * 1000000000
+                np_indata = np.frombuffer(indata, dtype=self.dtype).reshape(nsamp, self.channels)
+                self.soundfile.write(np_indata)
                 print('{}, {}'.format(nsamp, t), file=self.logfile)
                 if nsamp < self.buffer_size:
                     print('ALSA Read buffer underrun.')

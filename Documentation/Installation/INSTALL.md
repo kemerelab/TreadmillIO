@@ -1,6 +1,6 @@
 # Installation
 
-### !!Update!! TreadmillIO should now be compatible with pip
+### !!Update!!! TreadmillIO should now be compatible with pip
 Start with a clean Python environment. For example:
 ```
 mamba create -n treadmillio python=3.10
@@ -40,7 +40,7 @@ be picked up.
 ### Test
 You should now be able to plug in the IO board and run `run-treadmillio` with
 an appropriate configuration file.  For example: 
-`./RunExperiment.py -C ExampleConfigs/tests/test_io_pins.yaml`. (This should 
+`./RunExperiment.py ExampleConfigs/tests/test_io_pins.yaml`. (This should 
 activate all the IO pins on your interface board.)
 
 ```
@@ -48,24 +48,20 @@ run-treadmillio -P /dev/tty.usbmodem86825701 /path/to/TreadmillIO/Documentation/
 ```
 
 ## Optional sound interface using the Alsa library
-#### Clone the `ckemere` version of `pyalsaaudio` and install it
-This library has been modifed to timestamp recorded buffers!
-
-`git clone https://github.com/ckemere/pyalsaaudio`
-
 Install the dependency of `pyalsaaudio`
 
 `sudo apt install libasound2-dev`
 
-In the `pyalsaaudio` installation directory run: `pip3 install -e .`
-The installation should conlcude without error.
+Install `pyalsaaudio`
+
+`pip install pyalsaaudio`
 
 #### Test
-You should now be able to plug in the IO board and run `./RunExperiment.py` with
+You should now be able to plug in the IO board and run `run-treadmillio` with
 an appropriate configuration file. For example: 
-`./RunExperiment.py -C ExampleConfigs/tests/test_sound.yaml`. (This should 
-play different sounds through the left and right channels of the stereo interface.)
-Note that you might need to change what the listed `HWDevice` in the config file is.
+`run-treadmillio /path/to/TreadmillIO/Documents/ExampleConfigs/tests/test_sound.yaml`. 
+(This should play different sounds through the left and right channels of the stereo interface.)
+Note that you will need to set what the listed `HWDevice` in the config file is.
 You can use the command `aplay -L` to list all the devices present in your system.
 
 ## Optional Webcam video recording: 
@@ -105,7 +101,7 @@ For some odd reason, the pupil-labs version of libuvc fails for camera resolutio
 
 `pip3 install cython scikit-video pyglet` (specifically for uvc camera interface)
 
-Next, change to the `uvccam` subdirectory `cd TreadmillIO/ClientSide/treadmillio/uvccam`. Then run
+Next, change to the `uvccam` subdirectory `cd TreadmillIO/src/treadmillio/uvccam`. Then run
 
 ```
 python3 setup.py build_ext --inplace
@@ -113,15 +109,15 @@ python3 setup.py build_ext --inplace
 (This last command compiles the cython-based camera interface code.)
 
 #### Test
-You should now be able to plug in the IO board and run `./RunExperiment.py` with
+You should now be able to plug in the IO board and run `run-treadmillio` with
 an appropriate configuration file. For example: 
-`./RunExperiment.py -C ExampleConfigs/tests/test_webcam.yaml`. This should pop up
+`run-treadmillio ExampleConfigs/tests/test_webcam.yaml`. This should pop up
 a window that shows the current view of the world. Note that f you have mulitple
 webcams connected, you might need to change what the listed `CameraIndex` in the 
 config file is. There are hooks via the `CameraParams` section of the configuration
 to set parameters of the camera.
 
-Note that in the `TreadmillIO/ClientSide/treadmillio/uvccam`, you can also execute
+Note that in the `/path/to/TreadmillIO/src/treadmillio/uvccam`, you can also execute
 just the webcam submodule by running `python3 uvccam.py`.
 
 ## Option GigE machine vision camera recording:
@@ -170,9 +166,9 @@ Now, install the python packages need for the submodule.
 `pip3 install pyglet simplejpeg`
 
 #### Test
-You should now be able to plug in the IO board and run `./RunExperiment.py` with
+You should now be able to plug in the IO board and run `run-treadmillio` with
 an appropriate configuration file. For example: 
-`./RunExperiment.py -C ExampleConfigs/tests/test_webcam.yaml`. This should pop up
+`run-treadmillio ExampleConfigs/tests/test_webcam.yaml`. This should pop up
 a window that shows the current view of the world. If you have multiple GigE cameras
 in your system, it should be possible to interface them selectively, but this has
 not yet been implemented. Note that the config file specifies the size of the window
@@ -181,5 +177,5 @@ have to sum to less than the full sensor size to work. Currently only `Mono8` an
 `Bayer_RG8` formats are supported, though more could be added. If `Compress` is `True`
 we JPEG compress. Otherwise, the raw video is stored!
 
-Note that in the `TreadmillIO/ClientSide/treadmillio/camera`, you can also execute
+Note that in the `TreadmillIO/src/treadmillio/camera`, you can also execute
 just the webcam submodule by running `python3 gigecam.py`.
